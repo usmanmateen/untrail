@@ -27,6 +27,8 @@ namespace Untrail
         public string Reason;
         public bool NeedsAdmin;
         public bool IsLink;
+        /// <summary>Where the path really led when it was scanned (links resolved). Deletion refuses if this has changed.</summary>
+        public string RealPath;
 
         public string DisplayPath
         {
@@ -37,7 +39,7 @@ namespace Untrail
                     int bar = Path.LastIndexOf('|');
                     return Path.Substring(0, bar) + "  →  " + Path.Substring(bar + 1);
                 }
-                return Path;
+                return Util.Show(Path);
             }
         }
     }
@@ -65,6 +67,7 @@ namespace Untrail
         public List<string> Notes = new List<string>();
         public string InstallDirWarning;
         public DateTime? InstalledAt;   // set by the first scan
+        public bool? IsElectron;
 
         public bool HasUninstaller
         {
@@ -278,6 +281,52 @@ namespace Untrail
         public static bool IsReparse(string path)
         {
             try { return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0; } catch { return false; }
+        }
+
+        /// <summary>--hide-user: shows paths in your user folder as %USERPROFILE%\... (for screenshots and recordings).</summary>
+        public static bool HideUser;
+
+        public static string Show(string path)
+        {
+            if (!HideUser || path == null) return path;
+            return IsAtOrUnder(path, UserProfile) ? "%USERPROFILE%" + path.Substring(UserProfile.Length) : path;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFileW(string name, int access, int share, IntPtr sec, int disposition, int flags, IntPtr template);
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        static extern int GetFinalPathNameByHandleW(Microsoft.Win32.SafeHandles.SafeFileHandle h, StringBuilder buf, int size, int flags);
+
+        /// <summary>The path with every link and junction resolved, or null if it can't be opened.</summary>
+        public static string FinalPath(string path)
+        {
+            const int FILE_SHARE_ALL = 7, OPEN_EXISTING = 3, FILE_FLAG_BACKUP_SEMANTICS = 0x02000000;
+            using (var h = CreateFileW(path, 0, FILE_SHARE_ALL, IntPtr.Zero, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, IntPtr.Zero))
+            {
+                if (h.IsInvalid) return null;
+                var sb = new StringBuilder(1024);
+                int n = GetFinalPathNameByHandleW(h, sb, sb.Capacity, 0);
+                if (n <= 0 || n >= sb.Capacity) return null;
+                string s = sb.ToString();
+                if (s.StartsWith(@"\\?\UNC\")) s = @"\\" + s.Substring(8);
+                else if (s.StartsWith(@"\\?\")) s = s.Substring(4);
+                return s.TrimEnd('\\');
+            }
+        }
+
+        /// <summary>Free space per drive (e.g. "C:"), for measuring what a removal really gave back.</summary>
+        public static Dictionary<string, long> FreeSpace(IEnumerable<string> drives)
+        {
+            var d = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            foreach (string drive in drives.Distinct(StringComparer.OrdinalIgnoreCase))
+                try { d[drive] = new DriveInfo(drive).AvailableFreeSpace; } catch { }
+            return d;
+        }
+
+        public static string DriveOf(string path)
+        {
+            try { return path != null && path.Length > 1 && path[1] == ':' ? path.Substring(0, 2).ToUpperInvariant() : null; }
+            catch { return null; }
         }
 
         public static long DirSize(string dir, Func<bool> cancelled)

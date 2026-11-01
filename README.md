@@ -5,113 +5,154 @@
   </picture>
 </p>
 
-<h3 align="center">Uninstall completely.</h3>
-<p align="center">Remove apps <em>and</em> the leftover files they leave behind on Windows.</p>
+<h3 align="center">Untrail — Uninstall completely.</h3>
+<p align="center">Remove applications and the files they leave behind.</p>
 
 <p align="center">
-  <a href="https://github.com/usmanmateen/untrail/releases/latest/download/UntrailSetup.exe"><b>⬇ Download UntrailSetup.exe</b></a>
+  <a href="https://github.com/usmanmateen/untrail/releases/latest/download/UntrailSetup.exe"><b>⬇ Download the installer</b></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/usmanmateen/untrail/releases/latest">All downloads</a>
+  <a href="https://github.com/usmanmateen/untrail/releases/latest">Portable zip and all downloads</a>
 </p>
 
-<p align="center"><img src="docs/screenshot.png" alt="Untrail showing everything a notes app left on the PC" width="820"></p>
+<p align="center"><img src="docs/screenshot.png" alt="Untrail listing what a demo notes app left behind, with sizes and safety ratings" width="820"></p>
 
-When you uninstall an app the normal way, it often leaves gigabytes behind: caches in AppData, settings, updater folders, Start-menu shortcuts and registry entries. Untrail finds all of it and removes it in one go.
+Uninstalling an app on Windows often leaves a lot behind: caches and settings in AppData, update downloads, Start-menu shortcuts, start-up entries and registry keys. Some of these run to gigabytes. Untrail runs the app's own uninstaller, finds what's left, explains why each item belongs to the app, and removes what you approve.
 
 ## How it works
 
-1. **Drop an app's icon** from your desktop into the Untrail window. A Start-menu shortcut, the app's `.exe` or its install folder also work, or you can pick the app from **Installed apps…**.
-2. **Review what it found.** Every item shows its size and why Untrail thinks it belongs to the app. Items marked **Safe to remove** are ticked for you. **Review** and **Keep** items stay unticked until you tick them.
-3. **Click Uninstall & Clean.** The app's own uninstaller runs first, then Untrail removes whatever it left behind and tells you how much space you got back.
+1. **Drag the app's icon into Untrail.** A desktop or Start-menu shortcut, the app's `.exe` or its install folder all work. You can also pick the app from **Installed apps…**.
+2. **Review the list.** Every item shows its size, a safety rating and the reason it was found:
+   - **✓ Safe to remove** is ticked for you. There's evidence the item belongs to this app.
+   - **⚠ Review** is a likely match without enough proof. It stays unticked.
+   - **✕ Keep** may hold your own files, for example in `Documents`. It stays unticked.
+3. **Click Uninstall & Clean.**
+   - The app's own uninstaller runs first, and Untrail waits for it to really finish. If it's cancelled or fails, Untrail stops and deletes nothing, unless you explicitly choose *Clean up anyway*.
+   - Untrail then removes the leftovers you ticked and scans again to check what's still there.
+   - Finally it shows a summary for each drive.
 
-## Install
+<p align="center"><img src="docs/results.png" alt="Untrail's results: removed by the app's uninstaller, deleted by Untrail and the measured change in free space, per drive" width="560"></p>
 
-**[Download UntrailSetup.exe](https://github.com/usmanmateen/untrail/releases/latest/download/UntrailSetup.exe)** and run it.
+## Download
 
-- It installs for your Windows account only, so you don't need admin rights.
-- It adds Untrail to the Start menu and, if you want, to the desktop.
-- To remove Untrail itself, use **Settings → Apps → Installed apps → Untrail → Uninstall**.
-- Prefer not to install? Download `Untrail-<version>-portable.zip` from the [releases page](https://github.com/usmanmateen/untrail/releases/latest) and run `Untrail.exe` directly.
+- **[Installer](https://github.com/usmanmateen/untrail/releases/latest/download/UntrailSetup.exe):** installs for your Windows account only (no admin rights needed) and adds Untrail to the Start menu. To remove it, use **Settings → Apps → Installed apps → Untrail**.
+- **Portable:** download `Untrail-<version>-portable.zip` from the [releases page](https://github.com/usmanmateen/untrail/releases/latest) and run `Untrail.exe`.
 
-> **"Windows protected your PC"?** Untrail isn't code-signed yet, so SmartScreen warns about it the first few times people download it. Click **More info → Run anyway**. Each release lists SHA-256 checksums in `SHA256SUMS.txt` if you want to verify your download.
+It works on Windows 10 and 11 and uses the .NET Framework already built into Windows.
 
-Untrail needs Windows 10 or 11. It uses the .NET Framework that's already built into Windows, so there's nothing else to install.
+> **"Windows protected your PC"?** Untrail isn't code-signed yet, so SmartScreen may warn the first time. Choose **More info → Run anyway**. Each release includes `SHA256SUMS.txt` if you want to verify the download.
 
-## Where it looks
+## What it can remove
+
+- **Supported:** desktop apps installed with the usual Windows installers (MSI, NSIS, Inno Setup, Squirrel/Electron and similar), for your account or for all users; apps with no uninstaller (their folder is removed directly); and Steam games through their shortcuts.
+- **Not supported:**
+  - Microsoft Store apps. Use Settings → Apps.
+  - Browser "web apps" such as Chrome or Edge shortcuts. Untrail recognises them and explains how to remove them in the browser.
+  - Built-in Windows components.
+
+## Normal scan and deep scan
+
+The **normal scan** checks the places apps actually use:
 
 | | |
 |---|---|
 | **Program folder** | `Program Files`, `Program Files (x86)`, `AppData\Local\Programs` |
 | **App data & caches** | `AppData\Local`, `AppData\Roaming`, `AppData\LocalLow`, `C:\Users\you\.appname`, update caches |
-| **Shared data** | `ProgramData` |
+| **Shared data** | `ProgramData` (`Common Files` is listed for review only, as it's shared by design) |
 | **Temporary files** | `AppData\Local\Temp` |
 | **Shortcuts** | Desktop, Start menu, pinned taskbar icons |
 | **Registry** | The Installed-apps entry, `Software\<App>` settings, start-up entries, App Paths |
-| **Your documents** | `Documents`, `Saved Games`. These are always marked **Keep**, because they may hold your own files. |
-| **Deep scan** (optional) | Folders named after the app anywhere on your drives |
+| **Your documents** | `Documents`, `Saved Games`. These are always marked **Keep**. |
 
-## Built to be careful
+**Deep scan** (optional, slower) also looks for folders named after the app anywhere on your fixed drives, up to four levels deep. Anything it finds is only ever marked **Review**.
 
-- **It never touches Windows**, system folders, or top-level folders such as `Program Files`, `AppData` or `Documents`. Before each delete, every path is checked again against a strict allowlist. For the registry, that means only the app's own `Software\<App>` keys, its Installed-apps entry, App Paths and start-up entries.
-- **It never removes another app's files.** A folder that also holds a different installed app is skipped, even when it shares the publisher's name.
-- **A matching name alone isn't enough.** To be ticked as *Safe to remove*, a folder must have been used since the app was installed. Folders with common-word names (like "Notes") always need your review.
-- **It waits for the app's own uninstaller to really finish.** Many uninstallers hand off to a hidden copy of themselves, and Steam hands off to the Steam window, so Untrail follows the uninstaller's process tree. It carries on only once that tree has ended and the app is gone. If you cancel the uninstaller, nothing is deleted unless you choose to.
-- **No backup, no delete.** Registry entries are exported to `Documents\Untrail Backups` first (double-click a `.reg` file to restore one). If the export fails, the entry is left alone. A removal log is saved alongside.
-- **It re-checks after cleaning.** Untrail scans again and shows anything still there, instead of assuming everything is gone.
-- **Files go to the Recycle Bin** by default. Tick *Delete permanently* if you want the space back straight away.
-- **Admin rights are asked for only when needed**, for items in `Program Files`, `ProgramData` or the machine-wide registry. The admin helper receives its job over a private pipe from the Untrail window, and each side verifies the other.
+## Safety
+
+The guiding rule: when in doubt, leave it. Missing a leftover is better than deleting something that isn't the app's.
+
+- **A name match is only a hint.** Before a same-named folder is marked *Safe to remove*, Untrail needs evidence that it belongs to the app. Evidence means it holds the app's own program files, its files mention the app's install folder, the app's registry settings point to it, it's the app's Electron data folder, or it sits in the publisher's own folder. Folders that are untouched since before the install, have common-word names or can't be read are marked *Review*.
+- **Other apps' files are protected.** Folders that hold another installed app are never selected, even when they share a publisher. Neither are system folders or top-level folders like `Program Files`, `AppData` and `Documents`.
+- **Links are never followed.** For junctions and symbolic links, only the link itself is removed, never its target. A path that has changed since the scan, such as one swapped for a link, is refused.
+- **Every delete is re-checked.** Right before deleting, each item is checked again: against a fixed allowlist, against the identity of the app being removed, and against where it led at scan time. Registry deletion is limited to the app's own `Software` keys, its Installed-apps entry, App Paths and start-up entries.
+- **No backup, no delete.** Registry entries are exported to `Documents\Untrail Backups` first. If the backup fails, the entry stays. A removal log is saved with the backups.
+- **Admin rights only when needed.** Admin is requested only for `Program Files`, `ProgramData` or system-wide registry items. The admin helper gets its job over a private, verified connection from the Untrail window and applies all the checks above again.
+- **Honest results.** After cleaning, Untrail scans again. It only says "No additional leftovers detected in scanned locations" when that scan finished and found nothing. It never claims *nothing* is left.
+
+## How storage recovery is calculated
+
+The results show each affected drive separately:
+
+| Column | What it means |
+|---|---|
+| **Uninstaller removed** | Measured before and after the app's own uninstaller ran |
+| **Untrail deleted** | What Untrail permanently deleted afterwards. Nothing is counted twice |
+| **Recycle Bin** | Moved to the Recycle Bin. It still uses space until you empty the bin |
+| **At restart** | Files in use that Windows will remove when you restart (listed by name) |
+| **Not removed** | What couldn't be removed, and why |
+| **Free space change** | The drive's free space measured before and after. It's the real number, but other programs can affect it |
+
+The size columns are file sizes. On disk, compression and cluster sizes mean the space actually reclaimed can differ slightly, which is why the measured free-space change is shown too.
 
 ## Limitations
 
-- Microsoft Store apps aren't supported. Remove them from Settings → Apps.
-- Leftovers are matched by name. If an app keeps data in folders with unrelated names, try *Deep scan* or remove those by hand.
-- Don't start Untrail with "Run as administrator". Windows blocks drag and drop into admin windows. Untrail asks for admin itself when it needs it.
+- Leftovers are found by name and then verified, so a folder with an unrelated name won't be found, and an unverified one is left for you to review.
+- Don't start Untrail with "Run as administrator", because Windows blocks drag and drop into admin windows. Untrail asks for admin itself when it needs it.
+- For files in use, Untrail can only schedule removal at restart when it has admin rights. Otherwise it reports them as not removed.
+- `--hide-user` shows paths in your user folder as `%USERPROFILE%\…`, which is handy for screenshots.
 
 ## Building from source
 
-Untrail is plain C# for .NET Framework 4.8, compiled with the `csc.exe` that ships with Windows, so no SDK or Visual Studio is needed.
+Untrail is plain C# for .NET Framework 4.8. It's compiled with the `csc.exe` that ships with Windows, so no SDK or Visual Studio is needed.
 
 ```bash
-powershell -ExecutionPolicy Bypass -File build.ps1 -Version 1.0.0
+powershell -ExecutionPolicy Bypass -File build.ps1 -Version 1.1.1
 ```
 
 This writes `dist/Untrail.exe`, `dist/UntrailSetup.exe`, the portable zip and `SHA256SUMS.txt`.
 
 | Path | What's there |
 |---|---|
-| `src/app` | The app: scanner, delete engine, window |
+| `src/app` | The app: scanner, ownership checks, delete engine, uninstaller tracking, windows |
 | `src/setup` | The installer (it embeds `Untrail.exe`) |
 | `src/shared` | Brand theme and install/uninstall helpers used by both |
 | `src/assets` | Logo and icon, generated from `brand/` by `tools/make_assets.py` |
+| `tests` | Integration tests |
+| `tools/demo` | Scripts that produce the README screenshots and demo recording |
 
-To check what a scan would find without opening the window or changing anything:
+To see what a scan would find without changing anything:
 
 ```bash
 Untrail.exe --scan "C:\Users\you\Desktop\Some App.lnk" --out report.txt
 ```
 
-### Tests
+## Tests
 
-`tests/integration.ps1` installs throwaway fake apps, runs the real delete path and checks the results. The fake apps cover:
+`tests/integration.ps1` installs throwaway fake apps, runs the real delete path and checks every result. It covers:
 
-- an NSIS-style uninstaller that hands off to a temp copy of itself;
-- same-publisher and same-name decoys that must survive;
-- registry backups;
-- the admin helper;
-- a self-test of the delete allowlist.
+- **Ownership evidence:** name collisions, old same-name folders, unreadable folders.
+- **Shared folders:** shared install folders, and a decoy app from the same publisher.
+- **Links:** junctions and symbolic links, inside a leftover and as a leftover.
+- **Uninstallers:**
+  - an NSIS-style one that hands off to a hidden copy of itself;
+  - a cancelled one, then an explicit manual cleanup afterwards;
+  - one that only partly uninstalls.
+- **Failures:** a registry backup that fails, and a file locked by a running process.
+- **Recycle Bin versus permanent deletion.**
+- **Storage accuracy:** the uninstaller's removals plus Untrail's must equal everything found, to the byte.
+- **The admin helper:** it must refuse items outside the app's identity.
+- **The delete allowlist self-test.**
 
-It runs on every push, on GitHub's disposable Windows machines. It's safe to run locally too: it only creates and removes fixtures named "Zephyr …", and the machine-wide part runs only as admin.
+The tests run on every push on GitHub's disposable Windows machines, where the admin-only scenarios run too. They're safe to run locally: the fixtures are fake "Zephyr" apps, and the script stops if any fixture path already exists.
 
 ```bash
 powershell -ExecutionPolicy Bypass -File tests/integration.ps1 -Exe dist/Untrail.exe
 ```
 
-### Releasing
+## Releasing
 
-Push a version tag. GitHub Actions then builds on Windows and publishes the release with the installer, the portable zip and checksums:
+Push a version tag. GitHub Actions builds on Windows, runs the tests, and publishes the installer, portable zip and checksums:
 
 ```bash
-git tag v1.0.1 && git push origin v1.0.1
+git tag v1.1.1 && git push origin v1.1.1
 ```
 
 ## License

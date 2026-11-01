@@ -403,18 +403,15 @@ namespace Untrail
             public Action<string> Progress;
             public Func<bool> Cancelled;
             public DateTime? InstalledAt;
+            public bool IsElectron;
+            public List<string> RegRefs = new List<string>();
         }
 
         public static List<FoundItem> Scan(AppInfo app, List<UninstallEntry> entries, bool deep, Action<string> progress, Func<bool> cancelled)
         {
             var c = new Ctx { App = app, Progress = progress ?? (s => { }), Cancelled = cancelled ?? (() => false) };
 
-            foreach (UninstallEntry o in entries)
-            {
-                if (o == app.Entry || app.SameApp.Contains(o)) continue;
-                foreach (string d in new[] { EntryDir(o), UninstallerDir(o) })
-                    if (d != null) c.OtherDirs.Add(new KeyValuePair<string, string>(DeriveInstallDir(d), o.DisplayName));
-            }
+            c.OtherDirs = OtherAppDirs(app, entries);
 
             // AppData\Local\CapCut\Apps -> AppData\Local\CapCut when the wrapping folder carries the app's own name
             // (its user data usually sits next to the program files).
@@ -440,6 +437,9 @@ namespace Untrail
             // Remembered on the app so a re-scan after removal (install folder gone) still knows it.
             if (!app.InstalledAt.HasValue) app.InstalledAt = InstallTime(app);
             c.InstalledAt = app.InstalledAt;
+            if (!app.IsElectron.HasValue) app.IsElectron = InstallIsElectron(app);
+            c.IsElectron = app.IsElectron.Value;
+            c.RegRefs = CollectRegistryRefs(app);
 
             c.Progress("Looking in AppData…");
             ScanContainer(c, Util.LocalAppData, Cat.AppData, 2, Confidence.Sure);
@@ -449,8 +449,9 @@ namespace Untrail
             ScanContainer(c, Util.ProgramData, Cat.Shared, 2, Confidence.Sure);
             ScanContainer(c, Util.ProgramFiles, Cat.Program, 2, Confidence.Sure);
             if (!Util.SamePath(Util.ProgramFiles, Util.ProgramFilesX86)) ScanContainer(c, Util.ProgramFilesX86, Cat.Program, 2, Confidence.Sure);
-            ScanContainer(c, Util.CommonFiles, Cat.Program, 1, Confidence.Sure);
-            if (!Util.SamePath(Util.CommonFiles, Util.CommonFilesX86)) ScanContainer(c, Util.CommonFilesX86, Cat.Program, 1, Confidence.Sure);
+            // Common Files is shared between programs by design: never auto-selected.
+            ScanContainer(c, Util.CommonFiles, Cat.Program, 1, Confidence.Likely);
+            if (!Util.SamePath(Util.CommonFiles, Util.CommonFilesX86)) ScanContainer(c, Util.CommonFilesX86, Cat.Program, 1, Confidence.Likely);
             ScanContainer(c, Util.Temp, Cat.Temp, 1, Confidence.Sure);
             ScanContainer(c, Util.UserProfile, Cat.AppData, 1, Confidence.Likely);
             ScanContainer(c, Util.Documents, Cat.Docs, 1, Confidence.Maybe);
@@ -480,24 +481,42 @@ namespace Untrail
             return c.Items;
         }
 
+        /// <summary>Install folders of every other installed app (folder, app name).</summary>
+        public static List<KeyValuePair<string, string>> OtherAppDirs(AppInfo app, List<UninstallEntry> entries)
+        {
+            var list = new List<KeyValuePair<string, string>>();
+            foreach (UninstallEntry o in entries)
+            {
+                if (app.Entry != null && (o.KeyPath == app.Entry.KeyPath || app.SameApp.Any(s => s.KeyPath == o.KeyPath))) continue;
+                foreach (string d in new[] { EntryDir(o), UninstallerDir(o) })
+                    if (d != null) list.Add(new KeyValuePair<string, string>(DeriveInstallDir(d), o.DisplayName));
+            }
+            return list;
+        }
+
         static Confidence Weaker(Confidence a, Confidence b) { return (Confidence)Math.Max((int)a, (int)b); }
 
         /// <summary>Does a folder/key name look like it belongs to the app? null = no.</summary>
         static Confidence? Match(Ctx c, string name, out string reason)
         {
+            return NameMatch(c.App.Strong, c.App.Weak, c.App.Pub, name, out reason);
+        }
+
+        public static Confidence? NameMatch(IList<string> strong, IList<string> weak, IList<string> pub, string name, out string reason)
+        {
             reason = null;
             string n = Util.Key(name.TrimStart('.'));
             if (n.Length < 3) return null;
-            foreach (string k in c.App.Strong)
+            foreach (string k in strong)
             {
                 if (n == k && Util.CommonWords.Contains(k)) { reason = "Same name as the app, but it's a common word"; return Confidence.Likely; }
                 if (n == k) { reason = "Name matches the app"; return Confidence.Sure; }
                 if (n == k + "updater") { reason = "The app's update cache"; return Confidence.Sure; } // Electron apps: "<name>-updater"
             }
-            foreach (string k in c.App.Weak)
+            foreach (string k in weak)
                 if (n == k) { reason = "Name matches the app's program file"; return Confidence.Likely; }
-            if (c.App.Pub.Contains(n)) return null; // publisher folders are searched inside instead
-            foreach (string k in c.App.Strong)
+            if (pub.Contains(n)) return null; // publisher folders are searched inside instead
+            foreach (string k in strong)
             {
                 if (k.Length >= 5 && n.StartsWith(k)) { reason = "Name starts with the app's name"; return Confidence.Likely; }
                 if (n.Length >= 5 && k.StartsWith(n)) { reason = "Name is a short form of the app's name"; return Confidence.Maybe; }
@@ -507,21 +526,146 @@ namespace Untrail
         }
 
         /// <summary>
-        /// A matching name alone doesn't prove a folder is the app's. To stay "Safe to remove" it also has to have been
-        /// used since the app was installed; null when that holds, otherwise why it's only "Review".
+        /// A matching name is only a hint. To be "Safe to remove", a folder also needs positive evidence that it is
+        /// this app's, and must not look abandoned since before the install. Returns null when owned (with the
+        /// evidence in <paramref name="evidence"/>), otherwise why it stays "Review". Any failure to check is a doubt.
         /// </summary>
-        static string OwnershipDoubt(Ctx c, string dir)
+        static string OwnershipDoubt(Ctx c, string dir, bool inPublisherFolder, out string evidence)
         {
-            if (!c.InstalledAt.HasValue) return "Same name as the app — check it's the app's";
-            DateTime last;
+            evidence = null;
             try
             {
-                last = Directory.GetLastWriteTime(dir);
-                foreach (FileSystemInfo f in new DirectoryInfo(dir).EnumerateFileSystemInfos().Take(300))
-                    if (f.LastWriteTime > last) last = f.LastWriteTime;
+                if (Util.IsReparse(dir)) return "It's a link to another folder — check where it points";
+                if (c.InstalledAt.HasValue)
+                {
+                    DateTime last = Directory.GetLastWriteTime(dir);
+                    foreach (FileSystemInfo f in new DirectoryInfo(dir).EnumerateFileSystemInfos().Take(300))
+                        if (f.LastWriteTime > last) last = f.LastWriteTime;
+                    if (last < c.InstalledAt.Value.AddDays(-2)) return "Same name as the app, but untouched since before it was installed";
+                }
+                evidence = inPublisherFolder ? "inside the publisher's folder" : Evidence(c, dir);
+                return evidence == null ? "Same name as the app, but nothing in it links it to the app" : null;
             }
-            catch { return null; }
-            return last >= c.InstalledAt.Value.AddDays(-2) ? null : "Same name as the app, but untouched since before it was installed";
+            catch { evidence = null; return "Couldn't check what's inside, so it isn't selected"; }
+        }
+
+        static readonly HashSet<string> TextExt = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        { ".json", ".ini", ".xml", ".log", ".txt", ".cfg", ".conf", ".config", ".yaml", ".yml", ".settings", ".properties", ".toml" };
+
+        /// <summary>Positive proof that a same-named folder is the app's. Bounded: a few hundred entries, a few dozen small files.</summary>
+        static string Evidence(Ctx c, string dir)
+        {
+            AppInfo app = c.App;
+            foreach (string r in c.RegRefs)
+                if (Util.IsAtOrUnder(r, dir)) return "the app's registry settings point to it";
+
+            // Electron apps keep their data in a folder named after the product, holding "Local State"/"Preferences".
+            if (c.IsElectron && (File.Exists(Path.Combine(dir, "Local State")) || File.Exists(Path.Combine(dir, "Preferences"))))
+                return "it's the app's Electron data folder";
+
+            var needles = new List<string>();
+            if (app.InstallDir != null)
+            {
+                needles.Add(app.InstallDir);
+                needles.Add(app.InstallDir.Replace("\\", "\\\\"));
+                needles.Add(app.InstallDir.Replace('\\', '/'));
+            }
+            if (app.ExePath != null)
+            {
+                string exe = Path.GetFileName(app.ExePath);
+                if (exe.Length >= 8 && Util.UsableKey(Util.Key(Path.GetFileNameWithoutExtension(exe)))) needles.Add(exe);
+            }
+
+            int seen = 0, read = 0, binaries = 0;
+            var queue = new Queue<KeyValuePair<string, int>>();
+            queue.Enqueue(new KeyValuePair<string, int>(dir, 0));
+            while (queue.Count > 0 && seen < 400)
+            {
+                var cur = queue.Dequeue();
+                foreach (FileSystemInfo f in new DirectoryInfo(cur.Key).EnumerateFileSystemInfos())
+                {
+                    if (++seen > 400) break;
+                    if ((f.Attributes & FileAttributes.ReparsePoint) != 0) continue;
+                    var fi = f as FileInfo;
+                    if (fi == null)
+                    {
+                        if (cur.Value < 3) queue.Enqueue(new KeyValuePair<string, int>(f.FullName, cur.Value + 1));
+                        continue;
+                    }
+                    string ext = fi.Extension.ToLowerInvariant();
+                    if ((ext == ".exe" || ext == ".dll") && binaries++ < 60)
+                    {
+                        FileVersionInfo vi = FileVersionInfo.GetVersionInfo(fi.FullName);
+                        string prod = Util.Key(Util.CleanName(vi.ProductName)), comp = Util.Key(Util.CleanPublisher(vi.CompanyName));
+                        if (prod.Length >= 3 && app.Strong.Contains(prod) || comp.Length >= 3 && app.Pub.Contains(comp))
+                            return "it holds the app's own program files";
+                    }
+                    else if (needles.Count > 0 && TextExt.Contains(ext) && fi.Length > 0 && fi.Length <= 512 * 1024 && read++ < 40)
+                    {
+                        string text = File.ReadAllText(fi.FullName);
+                        foreach (string n in needles)
+                            if (text.IndexOf(n, StringComparison.OrdinalIgnoreCase) >= 0) return "its files mention the app's install folder";
+                    }
+                }
+            }
+            return null;
+        }
+
+        /// <summary>Paths stored in the app's own registry settings (Software\App, Software\Publisher\App).</summary>
+        static List<string> CollectRegistryRefs(AppInfo app)
+        {
+            var refs = new List<string>();
+            foreach (string root in new[] { @"HKCU\Software", @"HKLM\SOFTWARE", @"HKLM\SOFTWARE\WOW6432Node" })
+            {
+                try
+                {
+                    using (RegistryKey k = Reg.Open(root, false))
+                    {
+                        if (k == null) continue;
+                        foreach (string name in k.GetSubKeyNames())
+                        {
+                            string key = Util.Key(name);
+                            bool mine = app.Strong.Contains(key), pub = app.Pub.Contains(key);
+                            if (!mine && !pub) continue;
+                            using (RegistryKey sub = k.OpenSubKey(name)) if (sub != null) CollectValues(sub, mine ? 0 : 1, app, refs, mine);
+                        }
+                    }
+                }
+                catch { }
+            }
+            return refs;
+        }
+
+        static void CollectValues(RegistryKey k, int depth, AppInfo app, List<string> refs, bool mine)
+        {
+            if (refs.Count > 500) return;
+            if (mine)
+                foreach (string v in k.GetValueNames())
+                {
+                    string s = Reg.Str(k, v);
+                    string p = s != null && s.Length > 3 && s.Length < 500 && (s.Contains(":\\") || s.StartsWith("%")) ? Util.NormDir(s.Trim('"')) : null;
+                    if (p != null) refs.Add(p);
+                }
+            if (depth > 2) return;
+            foreach (string name in k.GetSubKeyNames())
+            {
+                bool childMine = mine || app.Strong.Contains(Util.Key(name));
+                if (!childMine && depth >= 1) continue;
+                try { using (RegistryKey sub = k.OpenSubKey(name)) if (sub != null) CollectValues(sub, depth + 1, app, refs, childMine); }
+                catch { }
+            }
+        }
+
+        static bool InstallIsElectron(AppInfo app)
+        {
+            if (app.InstallDir == null) return false;
+            try
+            {
+                return Directory.EnumerateFiles(app.InstallDir, "app.asar", SearchOption.TopDirectoryOnly).Any()
+                    || Util.SafeDirs(app.InstallDir).Take(30).Any(d => File.Exists(Path.Combine(d, "app.asar")) ||
+                           Util.SafeDirs(d).Take(30).Any(d2 => File.Exists(Path.Combine(d2, "app.asar"))));
+            }
+            catch { return false; }
         }
 
         static DateTime? InstallTime(AppInfo app)
@@ -557,11 +701,36 @@ namespace Untrail
             if (c.Items.Any(i => string.Equals(i.Path, path, StringComparison.OrdinalIgnoreCase))) return;
             var item = new FoundItem { Path = path, Kind = kind };
             if (!StillExists(item)) return; // e.g. a re-scan after removal: the dropped shortcut or uninstall entry is gone
+            bool isLink = (kind == ItemKind.Folder || kind == ItemKind.File) && Util.IsReparse(path);
+            string real = null;
+            if (kind == ItemKind.Folder || kind == ItemKind.File)
+            {
+                real = Util.FinalPath(path);
+                // A link, or a path that really leads somewhere protected, is never ticked for you.
+                if (isLink || real == null || !Util.IsSafeToDelete(real))
+                {
+                    if (real != null && !isLink && !Util.IsSafeToDelete(real)) return;
+                    conf = Weaker(conf, Confidence.Likely);
+                    if (isLink) reason = "It's a link to another folder: only the link is removed, never what it points to";
+                }
+            }
             c.Items.Add(new FoundItem
             {
-                Path = path, Kind = kind, Conf = conf, Category = cat, Reason = reason,
-                IsLink = kind == ItemKind.Folder && Util.IsReparse(path),
+                Path = path, Kind = kind, Conf = conf, Category = cat, Reason = reason, IsLink = isLink, RealPath = real,
             });
+        }
+
+        /// <summary>A name match is "Safe to remove" only with ownership evidence; otherwise it is listed for review.</summary>
+        static void AddWithEvidence(Ctx c, string dir, Confidence conf, string cat, string reason, bool inPublisherFolder)
+        {
+            if (conf == Confidence.Sure)
+            {
+                string evidence;
+                string doubt = OwnershipDoubt(c, dir, inPublisherFolder, out evidence);
+                if (doubt != null) { conf = Confidence.Likely; reason = doubt; }
+                else reason = reason.Replace(" (in the publisher's folder)", "") + " — " + evidence;
+            }
+            Add(c, dir, ItemKind.Folder, conf, cat, reason, false);
         }
 
         static void ScanContainer(Ctx c, string root, string cat, int depth, Confidence cap)
@@ -581,20 +750,14 @@ namespace Untrail
                 Confidence? m = Match(c, name, out reason);
                 if (m.HasValue)
                 {
-                    Confidence conf = Weaker(m.Value, cap);
-                    if (conf == Confidence.Sure)
-                    {
-                        string doubt = OwnershipDoubt(c, dir);
-                        if (doubt != null) { conf = Confidence.Likely; reason = doubt; }
-                    }
-                    Add(c, dir, ItemKind.Folder, conf, cat, reason, false);
+                    AddWithEvidence(c, dir, Weaker(m.Value, cap), cat, reason, false);
                 }
-                else if (depth >= 2 && c.App.Pub.Contains(Util.Key(name)))
+                else if (depth >= 2 && c.App.Pub.Contains(Util.Key(name)) && !Util.IsReparse(dir))
                 {
                     foreach (string sub in Util.SafeDirs(dir))
                     {
                         Confidence? sm = Match(c, Path.GetFileName(sub), out reason);
-                        if (sm.HasValue) Add(c, sub, ItemKind.Folder, Weaker(sm.Value, cap), cat, reason + " (in the publisher's folder)", false);
+                        if (sm.HasValue) AddWithEvidence(c, sub, Weaker(sm.Value, cap), cat, reason + " (in the publisher's folder)", true);
                     }
                 }
             }
@@ -631,14 +794,38 @@ namespace Untrail
                     {
                         string reason;
                         Confidence? m = Util.IsProtected(d) ? null : Match(c, Path.GetFileName(d), out reason);
-                        if (m == Confidence.Sure) Add(c, d, ItemKind.Folder, Confidence.Sure, Cat.Shortcuts, "Start menu folder for the app", false);
+                        if (m == Confidence.Sure)
+                        {
+                            // Its name is a hint; a shortcut inside that opens the app is the proof.
+                            bool opensApp = Util.SafeFiles(d, "*.lnk").Any(l => PointsIntoApp(app, "\"" + Util.ResolveShortcut(l) + "\""));
+                            Add(c, d, ItemKind.Folder, opensApp ? Confidence.Sure : Confidence.Likely, Cat.Shortcuts,
+                                opensApp ? "Start menu folder with the app's shortcuts" : "Start menu folder with the app's name", false);
+                        }
                         stack.Push(new KeyValuePair<string, int>(d, cur.Value + 1));
                     }
                 }
             }
         }
 
-        public static readonly HashSet<string> RegSkip = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        static bool KeyPointsToApp(RegistryKey k, AppInfo app, int depth)
+        {
+            var needles = new List<string>();
+            if (app.InstallDir != null) needles.Add(app.InstallDir);
+            if (app.ExePath != null) needles.Add(app.ExePath);
+            if (needles.Count == 0) return false;
+            foreach (string v in k.GetValueNames().Take(300))
+            {
+                string s = Reg.Str(k, v);
+                if (s != null && needles.Any(n => s.IndexOf(n, StringComparison.OrdinalIgnoreCase) >= 0)) return true;
+            }
+            if (depth >= 2) return false;
+            foreach (string sub in k.GetSubKeyNames().Take(100))
+                using (RegistryKey sk = k.OpenSubKey(sub))
+                    if (sk != null && KeyPointsToApp(sk, app, depth + 1)) return true;
+            return false;
+        }
+
+        public static readonly HashSet<string> RegSkip =new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "Microsoft", "Classes", "Policies", "Wow6432Node", "Clients", "RegisteredApplications", "ODBC",
             "Windows", "Description", "Hardware", "Setup", "System", "AppDataLow", "Intel", "Khronos", "Partner",
@@ -667,7 +854,17 @@ namespace Untrail
                             Confidence? m = Match(c, name, out reason);
                             if (m.HasValue && m.Value != Confidence.Maybe)
                             {
-                                Add(c, root + "\\" + name, ItemKind.Registry, m.Value, Cat.Registry, "Settings key — " + reason.ToLowerInvariant(), false);
+                                // Same rule as folders: a name alone isn't proof. Values pointing at the app are.
+                                Confidence conf = m.Value;
+                                string why = "Settings key — " + reason.ToLowerInvariant();
+                                if (conf == Confidence.Sure)
+                                {
+                                    bool linked = false;
+                                    try { using (RegistryKey sk = k.OpenSubKey(name)) linked = sk != null && KeyPointsToApp(sk, app, 0); } catch { }
+                                    if (linked) why += ", and its values point to the app";
+                                    else { conf = Confidence.Likely; why = "Settings key with the app's name (nothing in it points to the app)"; }
+                                }
+                                Add(c, root + "\\" + name, ItemKind.Registry, conf, Cat.Registry, why, false);
                                 continue;
                             }
                             if (!app.Pub.Contains(Util.Key(name))) continue;
@@ -811,7 +1008,7 @@ namespace Untrail
                 foreach (var g in byParent)
                 {
                     string parent = g.Key;
-                    if (parent == null || !Util.IsSafeToDelete(parent) || Overlap(c, parent, false) != null) continue;
+                    if (parent == null || !Util.IsSafeToDelete(parent) || Overlap(c, parent, false) != null || Util.IsReparse(parent)) continue;
                     if (c.App.InstallDir != null && Util.IsUnder(c.App.InstallDir, parent) && !g.Any(i => Util.SamePath(i.Path, c.App.InstallDir))) continue;
                     string[] all;
                     try { all = Directory.GetFileSystemEntries(parent); } catch { continue; }
@@ -822,7 +1019,7 @@ namespace Untrail
                     c.Items.Add(new FoundItem
                     {
                         Path = parent.TrimEnd('\\'), Kind = ItemKind.Folder, Conf = g.Max(i => i.Conf), Category = first.Category,
-                        Reason = first.Reason + " (its parent folder holds nothing else)",
+                        Reason = first.Reason + " (its parent folder holds nothing else)", RealPath = Util.FinalPath(parent),
                     });
                     changed = true;
                 }

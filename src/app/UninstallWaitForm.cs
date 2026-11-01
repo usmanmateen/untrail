@@ -4,14 +4,20 @@ using System.Windows.Forms;
 
 namespace Untrail
 {
-    /// <summary>Shown while an app's own uninstaller runs. Closes by itself once the uninstaller is done and the app has gone.</summary>
+    /// <summary>
+    /// Shown while an app's own uninstaller runs. Closes by itself only when the uninstall has really completed
+    /// (process tree finished, Installed-apps entry and program gone). A cancelled, failed or partial uninstall
+    /// waits for the user: Stop, or an explicit "Clean up anyway" with a warning.
+    /// </summary>
     class UninstallWaitForm : Form
     {
-        public enum Outcome { Finished, CleanAnyway, Stop }
-        public Outcome Result = Outcome.Stop;
+        public enum Choice { Completed, CleanAnyway, Stop }
+        public Choice Result = Choice.Stop;
+        public UninstallStatus LastStatus;
 
         readonly UninstallRunner run;
         readonly Label body;
+        readonly ProgressBar bar;
         readonly Timer timer = new Timer { Interval = 700 };
 
         public UninstallWaitForm(UninstallRunner run, float scale)
@@ -28,20 +34,20 @@ namespace Untrail
             MaximizeBox = MinimizeBox = false;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(S(540), S(260));
+            ClientSize = new Size(S(560), S(270));
             Icon = Theme.AppIcon();
 
             var content = new Panel { Dock = DockStyle.Fill, Padding = new Padding(S(26), S(22), S(26), S(18)) };
-            var title = new Label { Dock = DockStyle.Top, Height = S(34), Font = Theme.Bold(13f), Text = "Waiting for " + name + "'s uninstaller", AutoEllipsis = true };
+            var title = new Label { Dock = DockStyle.Top, Height = S(34), Font = Theme.Bold(13f), Text = "Waiting for " + name + "'s uninstaller", AutoEllipsis = true, UseMnemonic = false };
             body = new Label
             {
-                Dock = DockStyle.Top, Height = S(88), ForeColor = Theme.Slate,
-                Text = "Follow the uninstaller's window. Untrail carries on by itself once it has finished and the app is gone.",
+                Dock = DockStyle.Top, Height = S(96), ForeColor = Theme.Slate, UseMnemonic = false,
+                Text = "Follow the uninstaller's window. Untrail carries on by itself once the uninstall has completed.",
             };
-            var bar = new ProgressBar { Dock = DockStyle.Top, Height = S(6), Style = ProgressBarStyle.Marquee, MarqueeAnimationSpeed = 30 };
+            bar = new ProgressBar { Dock = DockStyle.Top, Height = S(6), Style = ProgressBarStyle.Marquee, MarqueeAnimationSpeed = 30 };
             var buttons = new Panel { Dock = DockStyle.Bottom, Height = S(42) };
             var stop = new BrandButton { Text = "Stop", Glyph = Theme.GlyphStop, Dock = DockStyle.Right, Width = S(110) };
-            var clean = new BrandButton { Text = "Clean up now", Glyph = Theme.GlyphTrash, Dock = DockStyle.Right, Width = S(160) };
+            var clean = new BrandButton { Text = "Clean up anyway…", Glyph = Theme.GlyphTrash, Dock = DockStyle.Right, Width = S(180) };
             buttons.Controls.Add(clean);
             buttons.Controls.Add(new Panel { Dock = DockStyle.Right, Width = S(10) });
             buttons.Controls.Add(stop);
@@ -51,12 +57,18 @@ namespace Untrail
             content.Controls.Add(title);
             Controls.Add(content);
 
-            stop.Click += (s, e) => { Result = Outcome.Stop; Close(); };
+            stop.Click += (s, e) => { Result = Choice.Stop; Close(); };
             clean.Click += (s, e) =>
             {
-                if (MessageBox.Show(this, name + " may still be installed. Remove the selected files anyway?", "Untrail",
-                        MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
-                Result = Outcome.CleanAnyway;
+                UninstallStatus st = run.Status();
+                string why = st.State == UninstallState.Running ? "The uninstaller is still running."
+                           : st.State == UninstallState.Completed ? "" : st.Describe(name);
+                if (MessageBox.Show(this, (why.Length > 0 ? why + "\n\n" : "") +
+                        "Cleaning up now removes the selected files even though " + name + " may not have been uninstalled properly. " +
+                        "Only do this if you know its uninstaller is broken or was cancelled on purpose.\n\nClean up anyway?",
+                        "Untrail", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+                LastStatus = st;
+                Result = Choice.CleanAnyway;
                 Close();
             };
             timer.Tick += (s, e) => Poll();
@@ -66,21 +78,20 @@ namespace Untrail
 
         void Poll()
         {
-            bool running = run.Running;
-            if (!running && UninstallRunner.AppGone(run.App))
+            UninstallStatus st = run.Status();
+            LastStatus = st;
+            if (st.State == UninstallState.Completed)
             {
                 timer.Stop();
-                Result = Outcome.Finished;
+                Result = Choice.Completed;
                 Close();
                 return;
             }
-            if (!running)
-            {
-                string code = run.ExitCode.HasValue && run.ExitCode.Value != 0 ? " (it ended with error code " + run.ExitCode.Value + ")" : "";
-                body.Text = "The uninstaller has closed" + code + ", but " + run.App.Name + " still looks installed.\n\n" +
-                            "If you cancelled it, click Stop. If it's still working in another window (Steam, for example), " +
-                            "Untrail will carry on as soon as the app is gone.";
-            }
+            if (st.State == UninstallState.Running) return;
+            body.Text = st.Describe(run.App.Name) + (st.HandsOff
+                ? "\n\nUntrail carries on as soon as it's gone. Click Stop if you cancelled it."
+                : "\n\nNothing has been deleted. Click Stop to leave everything as it is.");
+            if (!st.HandsOff && bar.Style == ProgressBarStyle.Marquee) { bar.Style = ProgressBarStyle.Continuous; bar.Value = 0; }
         }
     }
 }

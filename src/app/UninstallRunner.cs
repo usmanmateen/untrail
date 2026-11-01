@@ -2,29 +2,82 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
 namespace Untrail
 {
+    public enum UninstallState
+    {
+        Running,    // the uninstaller (or something it started) is still running
+        Completed,  // finished, and the app's entry AND its program are gone
+        NoChange,   // finished, but nothing changed: cancelled, failed, or still working in another program (Steam)
+        Partial,    // finished, and only some of the app went away
+    }
+
+    /// <summary>Each signal on its own; none of them alone is taken as "uninstalled".</summary>
+    public class UninstallStatus
+    {
+        public bool TreeRunning;
+        public int? ExitCode;
+        public bool ExitCodeReliable;      // false when the uninstaller handed off to a copy of itself
+        public bool EntryPresent, ProgramPresent, InstallDirPresent;
+        public long InstallDirBytes;
+        public bool HandsOff;              // Steam & co.: the real work happens in another, already-running program
+        public UninstallState State;
+
+        static readonly int[] SuccessCodes = { 0, 3010, 1641 }; // MSI: 3010/1641 = success, restart needed
+
+        public bool ExitCodeSaysFailed { get { return ExitCode.HasValue && ExitCodeReliable && !SuccessCodes.Contains(ExitCode.Value); } }
+
+        public string Describe(string app)
+        {
+            var parts = new List<string>();
+            if (EntryPresent) parts.Add("it's still in Installed apps");
+            if (ProgramPresent) parts.Add("its program file is still there");
+            else if (InstallDirPresent && InstallDirBytes > 0) parts.Add(Util.FormatSize(InstallDirBytes) + " is left in its program folder");
+            string code = ExitCode.HasValue && ExitCodeReliable && ExitCode.Value != 0
+                ? " The uninstaller ended with code " + ExitCode.Value + (ExitCode.Value == 1602 ? " (cancelled)" : ExitCode.Value == 1603 ? " (failed)" : "") + "."
+                : "";
+            switch (State)
+            {
+                case UninstallState.Running: return "The uninstaller is still running.";
+                case UninstallState.Completed:
+                    return "The uninstaller finished and " + app + " is no longer installed." +
+                           (InstallDirPresent && InstallDirBytes > 0 ? " It left " + Util.FormatSize(InstallDirBytes) + " in the program folder." : "");
+                case UninstallState.Partial:
+                    return "The uninstaller finished, but only partly: " + string.Join(", ", parts) + "." + code;
+                default:
+                    return HandsOff
+                        ? "Waiting for " + app + " to be removed in the other program's window (Steam, for example)."
+                        : "The uninstaller closed without removing " + app + " (" + string.Join(", ", parts) + "). It was probably cancelled or failed." + code;
+            }
+        }
+    }
+
     /// <summary>
-    /// Runs an app's own uninstaller and works out when it has really finished: many uninstallers
-    /// (NSIS, Inno, Squirrel) copy themselves to Temp, start that copy and exit at once, and some
-    /// (Steam) hand the job to another program. So we follow the uninstaller's whole process tree
-    /// and also watch whether the app itself has gone.
+    /// Runs an app's own uninstaller and works out when it has really finished. Many uninstallers (NSIS, Inno,
+    /// Squirrel) copy themselves to Temp, start that copy and exit at once; MSI runs in msiexec; Steam hands the
+    /// job to the Steam client. So we follow the uninstaller's whole process tree, and judge the result by the
+    /// app itself: its Installed-apps entry and its program must both be gone.
     /// </summary>
     public class UninstallRunner
     {
         public readonly AppInfo App;
-        public int? ExitCode { get; private set; }
         readonly Process main;
         readonly DateTime started;
+        readonly bool handsOff;
+        int? exitCode;
+        long dirBytes;
+        DateTime sizedAt = DateTime.MinValue;
         readonly Dictionary<int, DateTime?> tracked = new Dictionary<int, DateTime?>();
 
-        UninstallRunner(AppInfo app, Process p)
+        UninstallRunner(AppInfo app, Process p, bool handsOff)
         {
             App = app;
             main = p;
+            this.handsOff = handsOff;
             started = DateTime.Now.AddSeconds(-2);
             tracked[p.Id] = StartTime(p.Id);
         }
@@ -48,67 +101,95 @@ namespace Untrail
         {
             string file, args;
             Command(app.Entry, out file, out args);
+            string exe = Path.GetFileName(file).ToLowerInvariant();
+            bool handsOff = args.IndexOf("steam://", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            new[] { "steam.exe", "epicgameslauncher.exe", "galaxyclient.exe", "battle.net.exe", "upc.exe", "eadesktop.exe" }.Contains(exe);
             var psi = new ProcessStartInfo(file, args) { UseShellExecute = true };
             try { psi.WorkingDirectory = Path.GetDirectoryName(file); } catch { }
             Process p = Process.Start(psi);
             if (p == null) throw new InvalidOperationException("the uninstaller didn't start");
-            return new UninstallRunner(app, p);
+            return new UninstallRunner(app, p, handsOff);
         }
 
-        /// <summary>True while the uninstaller or anything it started is still running.</summary>
-        public bool Running
+        public UninstallStatus Status()
         {
-            get
+            var s = new UninstallStatus { TreeRunning = TreeRunning(), HandsOff = handsOff };
+            s.ExitCode = exitCode;
+            s.ExitCodeReliable = tracked.Count == 1; // no hand-off copy: the first process's exit code is the real one
+            s.EntryPresent = App.Entry != null && Reg.Exists(App.Entry.KeyPath);
+            s.ProgramPresent = App.ExePath != null && File.Exists(App.ExePath);
+            s.InstallDirPresent = App.InstallDir != null && Directory.Exists(App.InstallDir);
+            if (!s.TreeRunning && s.InstallDirPresent && !s.ProgramPresent)
             {
-                List<KeyValuePair<int, int>> procs = Snapshot();   // pid, parent pid
-                var alive = new HashSet<int>();
-                foreach (var kv in procs) alive.Add(kv.Key);
-
-                bool grew = true;
-                while (grew)
-                {
-                    grew = false;
-                    foreach (var kv in procs)
-                    {
-                        if (tracked.ContainsKey(kv.Key) || !tracked.ContainsKey(kv.Value)) continue;
-                        DateTime? st = StartTime(kv.Key);
-                        if (st.HasValue && st.Value < started) continue; // PID reuse: older than our uninstall
-                        tracked[kv.Key] = st;
-                        grew = true;
-                    }
-                }
-                if (!ExitCode.HasValue && main.HasExited) { try { ExitCode = main.ExitCode; } catch { ExitCode = -1; } }
-
-                foreach (var kv in tracked)
-                {
-                    if (!alive.Contains(kv.Key)) continue;
-                    DateTime? now = StartTime(kv.Key);
-                    if (kv.Value.HasValue && now.HasValue && now.Value != kv.Value.Value) continue; // reused PID
-                    return true;
-                }
-                return false;
+                if (DateTime.Now - sizedAt > TimeSpan.FromSeconds(5)) { dirBytes = Util.DirSize(App.InstallDir, null); sizedAt = DateTime.Now; }
+                s.InstallDirBytes = dirBytes;
             }
+
+            // Gone means both: no Installed-apps entry, and no program (or, without a known program file, no program folder).
+            bool entryGone = App.Entry == null || !s.EntryPresent;
+            bool programGone = App.ExePath != null ? !s.ProgramPresent : (App.InstallDir != null && !s.InstallDirPresent);
+            bool anyGone = (App.Entry != null && !s.EntryPresent) || (App.ExePath != null && !s.ProgramPresent) || (App.InstallDir != null && !s.InstallDirPresent);
+            if (s.TreeRunning) s.State = UninstallState.Running;
+            else if (entryGone && programGone && App.Entry != null) s.State = UninstallState.Completed;
+            else if (anyGone) s.State = UninstallState.Partial;
+            else s.State = UninstallState.NoChange;
+            return s;
         }
 
-        /// <summary>The uninstaller has done its job: its Installed-apps entry, program file or folder has gone.</summary>
-        public static bool AppGone(AppInfo app)
+        bool TreeRunning()
         {
-            if (app.Entry != null && !Reg.Exists(app.Entry.KeyPath)) return true;
-            if (app.ExePath != null && !File.Exists(app.ExePath)) return true;
-            if (app.InstallDir != null && !Directory.Exists(app.InstallDir)) return true;
+            List<KeyValuePair<int, int>> procs = Snapshot();   // pid, parent pid
+            var alive = new HashSet<int>();
+            foreach (var kv in procs) alive.Add(kv.Key);
+
+            bool grew = true;
+            while (grew)
+            {
+                grew = false;
+                foreach (var kv in procs)
+                {
+                    if (tracked.ContainsKey(kv.Key) || !tracked.ContainsKey(kv.Value)) continue;
+                    DateTime? st = StartTime(kv.Key);
+                    if (st.HasValue && st.Value < started) continue; // PID reuse: older than our uninstall
+                    tracked[kv.Key] = st;
+                    grew = true;
+                }
+            }
+            if (!exitCode.HasValue && main.HasExited) { try { exitCode = main.ExitCode; } catch { } }
+
+            foreach (var kv in tracked)
+            {
+                if (!alive.Contains(kv.Key)) continue;
+                DateTime? now = StartTime(kv.Key);
+                if (kv.Value.HasValue && now.HasValue && now.Value != kv.Value.Value) continue; // reused PID
+                return true;
+            }
             return false;
         }
 
-        /// <summary>Blocks until the uninstaller is finished and the app is gone, or the timeout passes. For headless use.</summary>
-        public bool WaitDone(TimeSpan timeout)
+        /// <summary>
+        /// Headless use: waits until the uninstall completes or clearly won't. After the process tree ends, results
+        /// get a few seconds to settle (MSI and others finish their bookkeeping late); hand-off uninstallers
+        /// (Steam) are given until the timeout.
+        /// </summary>
+        public UninstallStatus Wait(TimeSpan timeout)
         {
             DateTime end = DateTime.Now + timeout;
+            DateTime? treeDone = null;
+            UninstallStatus s = Status();
             while (DateTime.Now < end)
             {
-                if (!Running && AppGone(App)) return true;
+                s = Status();
+                if (s.State == UninstallState.Completed) return s;
+                if (s.State != UninstallState.Running)
+                {
+                    if (!treeDone.HasValue) treeDone = DateTime.Now;
+                    if (!handsOff && DateTime.Now - treeDone.Value > TimeSpan.FromSeconds(4)) return s;
+                }
+                else treeDone = null;
                 System.Threading.Thread.Sleep(500);
             }
-            return false;
+            return s;
         }
 
         static DateTime? StartTime(int pid)

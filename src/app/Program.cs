@@ -18,6 +18,8 @@ namespace Untrail
             AppContext.SetSwitch("Switch.System.IO.BlockLongPaths", false);
 
             if (args.Length >= 3 && args[0] == "--elevated-helper") return Deleter.RunHelper(args[1], args[2]);
+            if (args.Contains("--hide-user")) { Util.HideUser = true; args = args.Where(a => a != "--hide-user").ToArray(); }
+            if (args.Length >= 3 && args[0] == "--helper-test") return HelperTest(args[1], args[2]);
             if (args.Length >= 2 && args[0] == "--scan") return CliScan(args, false);
             if (args.Length >= 2 && args[0] == "--purge") return CliScan(args, true);
             if (args.Length >= 2 && args[0] == "--selftest") return SelfTest(args[1]);
@@ -106,31 +108,44 @@ namespace Untrail
         {
             if (!args.Contains("--yes")) { sb.AppendLine("Refusing to delete without --yes."); return 1; }
             sb.AppendLine();
+            // Exactly what the window does with its default selection: only "Safe to remove" items.
+            // --include-review also selects "Review"/"Keep" items, like ticking everything in the window.
+            bool all = args.Contains("--include-review");
+            var session = new RemovalSession(app, items, items.Where(i => all || i.Conf == Confidence.Sure).ToList(), new DeleteOptions
+            {
+                Recycle = !args.Contains("--permanent"),
+                BackupDir = Deleter.NewBackupDir(app.Name),
+                SimulateBackupFailure = args.Contains("--simulate-backup-failure"),
+            });
+            session.Measure();
             if (args.Contains("--run-uninstaller") && app.HasUninstaller)
             {
-                UninstallRunner run = UninstallRunner.Start(app);
-                bool finished = run.WaitDone(TimeSpan.FromMinutes(5));
-                sb.AppendLine("UNINSTALLER exit code " + run.ExitCode + (finished ? ", finished" : ", DID NOT FINISH"));
-                if (!finished) return 4;
+                session.Uninstall = UninstallRunner.Start(app).Wait(TimeSpan.FromMinutes(5));
+                if (session.Uninstall.State != UninstallState.Completed)
+                {
+                    if (!args.Contains("--clean-anyway"))
+                    {
+                        // A cancelled, failed or partial uninstall never leads to cleanup on its own.
+                        session.Stopped = true;
+                        sb.Append(session.ToText());
+                        sb.AppendLine("STOPPED   the uninstaller didn't complete, so nothing was deleted");
+                        return 4;
+                    }
+                    session.ManualCleanup = true;
+                }
             }
 
-            List<FoundItem> selected = items.Where(i => i.Conf == Confidence.Sure && Scanner.StillExists(i)).ToList();
-            string backup = Deleter.NewBackupDir(app.Name);
-            bool recycle = !args.Contains("--permanent");
-            bool needAdmin = selected.Any(i => i.NeedsAdmin) && !Util.IsAdmin;
-            List<DeleteResult> results = selected.Count == 0 ? new List<DeleteResult>()
-                : needAdmin || args.Contains("--via-helper") ? Deleter.RunElevated(selected, recycle, backup, null, needAdmin)
-                : Deleter.Run(selected, recycle, backup, null);
-            foreach (DeleteResult r in results)
-                sb.AppendLine((r.Ok ? "DELETED   " : "FAILED    ") + r.Item.DisplayPath + (r.Error != null ? "  -- " + r.Error : ""));
-            sb.AppendLine("BACKUP    " + backup);
-
-            // Verify: scan again with the same identity and report anything "Safe to remove" that is still there.
-            List<FoundItem> again = Scanner.Scan(app, Scanner.GetUninstallEntries(), false, null, null);
-            foreach (FoundItem it in again.Where(i => i.Conf == Confidence.Sure))
-                sb.AppendLine("REMAINING " + it.DisplayPath);
-            if (results.Any(r => !r.Ok)) return 2;
-            return again.Any(i => i.Conf == Confidence.Sure) ? 3 : 0;
+            List<FoundItem> toDelete = session.AfterUninstaller();
+            bool needAdmin = toDelete.Any(i => i.NeedsAdmin) && !Util.IsAdmin;
+            session.Record(toDelete.Count == 0 ? new List<DeleteResult>()
+                : needAdmin || args.Contains("--via-helper") ? Deleter.RunElevated(toDelete, session.Options, session.Scope, null, needAdmin)
+                : Deleter.Run(toDelete, session.Options, session.Scope, null));
+            session.Verify(null);
+            sb.Append(session.ToText());
+            if (session.Count(Outcome.Failed) > 0) return 2;
+            if (session.SafeRemaining > 0 || !session.Verified) return 3;
+            if (session.Count(Outcome.PendingRestart) > 0) return 5;
+            return 0;
         }
 
         /// <summary>Checks the delete allowlist (Guard) against paths that must never be deleted. Nothing is touched.</summary>
@@ -171,6 +186,33 @@ namespace Untrail
                 sb.AppendLine((why == null ? "PASS allow  " : "FAIL refused ") + it.Path + (why != null ? "  -- " + why : ""));
             }
             sb.AppendLine(bad == 0 ? "ALL PASSED" : bad + " FAILED");
+            File.WriteAllText(outFile, sb.ToString(), Encoding.UTF8);
+            return bad == 0 ? 0 : 1;
+        }
+
+        /// <summary>
+        /// Test: sends the admin helper items that don't belong to the app (a decoy folder and registry key) under a
+        /// made-up app identity, and checks it refuses them. Writes PASS/FAIL lines to outFile.
+        /// </summary>
+        static int HelperTest(string decoyDir, string outFile)
+        {
+            var scope = new AppScope { Name = "Zephyr Scope Test", Strong = { "zephyrscopetest" }, Pub = { "zephyrlabs" } };
+            var items = new List<FoundItem>
+            {
+                new FoundItem { Kind = ItemKind.Folder, Path = decoyDir, RealPath = Util.FinalPath(decoyDir) },
+                new FoundItem { Kind = ItemKind.Registry, Path = @"HKCU\Software\Zephyr Decoy Vendor" },
+            };
+            var opts = new DeleteOptions { Recycle = false, BackupDir = Deleter.NewBackupDir("Zephyr Scope Test") };
+            List<DeleteResult> results = Deleter.RunElevated(items, opts, scope, null, false);
+            var sb = new StringBuilder();
+            int bad = 0;
+            foreach (DeleteResult r in results)
+            {
+                bool refused = r.Outcome == Outcome.Failed && r.Error != null && r.Error.StartsWith("Refused") && Scanner.StillExists(r.Item);
+                if (!refused) bad++;
+                sb.AppendLine((refused ? "PASS refused " : "FAIL not refused ") + r.Item.Path + "  -- " + r.Error);
+            }
+            try { Directory.Delete(opts.BackupDir, true); } catch { }
             File.WriteAllText(outFile, sb.ToString(), Encoding.UTF8);
             return bad == 0 ? 0 : 1;
         }
