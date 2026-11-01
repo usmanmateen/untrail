@@ -10,7 +10,7 @@
 #
 # -Screenshots <dir>: no recording and no mouse. Opens the demo app in Untrail, drives the buttons through
 # UI Automation and saves window screenshots (main window, results) with PrintWindow. Works on a locked screen.
-param([Parameter(Mandatory)][string]$Exe, [int]$Fps = 12, [string]$Screenshots)
+param([Parameter(Mandatory)][string]$Exe, [int]$Fps = 10, [string]$Screenshots)
 $ErrorActionPreference = 'Stop'
 $Exe = (Resolve-Path $Exe).Path
 $here = $PSScriptRoot
@@ -25,8 +25,9 @@ public static class Desk {
   [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
   [StructLayout(LayoutKind.Sequential)] struct MOUSEINPUT { public int dx, dy, mouseData, dwFlags, time; public IntPtr extra; }
-  [StructLayout(LayoutKind.Sequential)] struct INPUT { public int type; public MOUSEINPUT mi; int pad1; int pad2; }
-  [DllImport("user32.dll")] static extern uint SendInput(uint n, INPUT[] i, int size);
+  // 40 bytes on 64-bit Windows (type, padding, 32-byte MOUSEINPUT): SendInput rejects any other size.
+  [StructLayout(LayoutKind.Sequential)] struct INPUT { public int type; public MOUSEINPUT mi; }
+  [DllImport("user32.dll", SetLastError = true)] static extern uint SendInput(uint n, INPUT[] i, int size);
   [DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT p);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(POINT p);
@@ -35,21 +36,43 @@ public static class Desk {
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int hh, int flags);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+  static void Send(INPUT[] i) {
+    if (SendInput(1, i, Marshal.SizeOf(typeof(INPUT))) != 1) throw new InvalidOperationException("SendInput failed, error " + Marshal.GetLastWin32Error());
+  }
   static void Button(int flags) {
     var i = new INPUT[1]; i[0].type = 0; i[0].mi.dwFlags = flags;
-    SendInput(1, i, Marshal.SizeOf(typeof(INPUT)));
+    Send(i);
   }
   public static void Down() { Button(0x0002); }
   public static void Up() { Button(0x0004); }
-  // Eased, human-looking move; drags need real intermediate mouse moves.
+  [DllImport("user32.dll")] static extern int GetSystemMetrics(int i);
+  [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int a, out RECT r, int size);
+  // A real mouse-move input event (absolute, across the whole virtual screen). Drag and drop only
+  // reacts to genuine input, not to SetCursorPos.
+  public static void MoveTo(int x, int y) {
+    int vx = GetSystemMetrics(76), vy = GetSystemMetrics(77), vw = GetSystemMetrics(78), vh = GetSystemMetrics(79);
+    var i = new INPUT[1]; i[0].type = 0;
+    i[0].mi.dx = (int)Math.Round((x - vx) * 65535.0 / (vw - 1));
+    i[0].mi.dy = (int)Math.Round((y - vy) * 65535.0 / (vh - 1));
+    i[0].mi.dwFlags = 0x0001 | 0x8000 | 0x4000; // MOVE | ABSOLUTE | VIRTUALDESK
+    Send(i);
+  }
+  // Eased, human-looking move made of real input events.
   public static void Glide(int x, int y, int ms) {
     POINT s; GetCursorPos(out s);
     int steps = Math.Max(1, ms / 15);
     for (int k = 1; k <= steps; k++) {
       double t = (double)k / steps; t = t < 0.5 ? 2 * t * t : 1 - Math.Pow(-2 * t + 2, 2) / 2;
-      SetCursorPos((int)(s.X + (x - s.X) * t), (int)(s.Y + (y - s.Y) * t));
+      MoveTo((int)(s.X + (x - s.X) * t), (int)(s.Y + (y - s.Y) * t));
       Thread.Sleep(15);
     }
+  }
+  // Places a window so its *visible* frame (without the invisible resize borders) fills the rectangle.
+  public static void PlaceVisible(IntPtr h, int x, int y, int w, int hh) {
+    RECT outer, vis; GetWindowRect(h, out outer);
+    if (DwmGetWindowAttribute(h, 9, out vis, Marshal.SizeOf(typeof(RECT))) != 0) vis = outer;
+    int l = vis.L - outer.L, t = vis.T - outer.T, r = outer.R - vis.R, b = outer.B - vis.B;
+    SetWindowPos(h, new IntPtr(-1), x - l, y - t, w + l + r, hh + t + b, 0x0040);
   }
   public static int PidAt(int x, int y) {
     var p = new POINT { X = x, Y = y };
@@ -169,15 +192,15 @@ public static class Shot {
         [void]$allowed.Add($untrail.Id)   # so the finally block closes it whatever happens
         $main = TopWindow $untrail.Id 'Untrail*'
         $hwnd = [IntPtr]$main.Current.NativeWindowHandle
-        Find $main { param($e) $e.Current.Name -like 'Scan finished*' } 40 | Out-Null
+        Find $main { param($e) $e.Current.Name -like 'selected to free*' } 40 | Out-Null
         Start-Sleep 1
         [Shot]::Save($hwnd, "$Screenshots\screenshot.png")
         $perm = Find $main { param($e) $e.Current.Name -like 'Delete permanently*' } 5
         $perm.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Toggle()
-        $btn = Find $main { param($e) $e.Current.ControlType -eq [Windows.Automation.ControlType]::Button -and $e.Current.Name -like '*Clean' } 5
+        $btn = Find $main { param($e) $e.Current.Name -like '*Clean' } 5
         $btn.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
         $confirm = TopWindow $untrail.Id 'Confirm removal' 10
-        $yes = Find $confirm { param($e) $e.Current.ControlType -eq [Windows.Automation.ControlType]::Button -and $e.Current.Name -eq 'Yes' } 5
+        $yes = Find $confirm { param($e) $e.Current.Name -eq 'Yes' } 5
         $yes.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
         $wait = TopWindow $untrail.Id 'Uninstalling*' 15
         Start-Sleep -Milliseconds 800
@@ -185,7 +208,7 @@ public static class Shot {
         $results = TopWindow $untrail.Id "Untrail*$name*" 90
         Start-Sleep 1
         [Shot]::Save([IntPtr]$results.Current.NativeWindowHandle, "$Screenshots\results.png")
-        $done = Find $results { param($e) $e.Current.ControlType -eq [Windows.Automation.ControlType]::Button -and ($e.Current.Name -like 'Done*' -or $e.Current.Name -like 'Review*') } 5
+        $done = Find $results { param($e) ($e.Current.Name -like 'Done*' -or $e.Current.Name -like 'Review what*') } 5
         $done.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
         Start-Sleep 1
         [Shot]::Save($hwnd, "$Screenshots\after.png")
@@ -201,10 +224,12 @@ public static class Shot {
     $main = TopWindow $untrail.Id 'Untrail*'
     $hwnd = [IntPtr]$main.Current.NativeWindowHandle
     # Topmost for the take, so nothing else on the desktop covers it (its dialogs are owned, so they stay above it).
-    [void][Desk]::SetWindowPos($hwnd, [IntPtr](-1), $X + $strip, $Y, $W - $strip, $H, 0x0040)
+    [Desk]::PlaceVisible($hwnd, $X + $strip, $Y, $W - $strip, $H)
+    Start-Sleep -Milliseconds 300
+    [Desk]::PlaceVisible($hwnd, $X + $strip, $Y, $W - $strip, $H)   # again, now the frame metrics are known
     [void][Desk]::SetForegroundWindow($hwnd)
     Start-Sleep 2
-    [Desk]::SetCursorPos($X + 700, $Y + 560) | Out-Null
+    [Desk]::MoveTo($X + 700, $Y + 560)
 
     # ------------------------------------------------------------ the take
     New-Item "$frames\start" -ItemType File | Out-Null
@@ -220,21 +245,21 @@ public static class Shot {
     if (-not $allowed.Contains([Desk]::PidAt($r.L + 150, $r.T + 200))) { [Desk]::Up(); throw 'Aborting: drop target is not Untrail.' }
     [Desk]::Up()
     # 3-4. scan: wait for it to finish
-    Find $main { param($e) $e.Current.Name -like 'Scan finished*' } 40 | Out-Null
+    Find $main { param($e) $e.Current.Name -like 'selected to free*' } 40 | Out-Null
     Start-Sleep -Milliseconds 900
     # 5. review: hover a few rows, including one that needs review
-    foreach ($pat in '*Roaming\Northwind Notes', '*northwind-notes-updater', '*.northwindnotes') {
-        $row = Find $main { param($e) $e.Current.ControlType -eq [Windows.Automation.ControlType]::ListItem -and $e.Current.Name -like $pat } 5
-        $c = Center $row; [Desk]::Glide($c[0] - 120, $c[1], 650); Start-Sleep -Milliseconds 650
-    }
+    # List rows aren't exposed to UI Automation, so hover by position inside the list (rows are 22 px at 100%).
+    $list = Find $main { param($e) $e.Current.ClassName -like '*SysListView32*' } 5
+    $lr = $list.Current.BoundingRectangle
+    foreach ($dy in 102, 146, 168) { [Desk]::Glide([int]$lr.X + 170, [int]$lr.Y + $dy, 650); Start-Sleep -Milliseconds 700 }
     $perm = Find $main { param($e) $e.Current.Name -like 'Delete permanently*' } 5
     $c = Center $perm; Click ($c[0] - 160) $c[1] 700; Start-Sleep -Milliseconds 600
     # 6. Uninstall & Clean
-    $btn = Find $main { param($e) $e.Current.ControlType -eq [Windows.Automation.ControlType]::Button -and $e.Current.Name -like '*Clean' } 5
+    $btn = Find $main { param($e) $e.Current.Name -like '*Clean' } 5
     $c = Center $btn; Click $c[0] $c[1] 900
     $confirm = TopWindow $untrail.Id 'Confirm removal' 10
     Start-Sleep -Milliseconds 1600
-    $yes = Find $confirm { param($e) $e.Current.ControlType -eq [Windows.Automation.ControlType]::Button -and $e.Current.Name -eq 'Yes' } 5
+    $yes = Find $confirm { param($e) $e.Current.Name -eq 'Yes' } 5
     $c = Center $yes; Click $c[0] $c[1] 700
     # 7. the demo app's own uninstaller runs (its window closes by itself)
     Start-Sleep 1
@@ -243,7 +268,7 @@ public static class Shot {
     # 8-10. cleanup, fresh scan, results
     $results = TopWindow $untrail.Id "Untrail*$name*" 90
     Start-Sleep -Milliseconds 4500
-    $done = Find $results { param($e) $e.Current.ControlType -eq [Windows.Automation.ControlType]::Button -and ($e.Current.Name -like 'Done*' -or $e.Current.Name -like 'Review*') } 5
+    $done = Find $results { param($e) ($e.Current.Name -like 'Done*' -or $e.Current.Name -like 'Review what*') } 5
     $c = Center $done; Click $c[0] $c[1] 900
     Start-Sleep -Milliseconds 2200
     New-Item "$frames\stop" -ItemType File | Out-Null

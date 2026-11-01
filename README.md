@@ -14,9 +14,15 @@
   <a href="https://github.com/usmanmateen/untrail/releases/latest">Portable zip and all downloads</a>
 </p>
 
-<p align="center"><img src="docs/screenshot.png" alt="Untrail listing what a demo notes app left behind, with sizes and safety ratings" width="820"></p>
-
 Uninstalling an app on Windows often leaves a lot behind: caches and settings in AppData, update downloads, Start-menu shortcuts, start-up entries and registry keys. Some of these run to gigabytes. Untrail runs the app's own uninstaller, finds what's left, explains why each item belongs to the app, and removes what you approve.
+
+## See Untrail in action
+
+![Untrail uninstalling an application and cleaning up its leftover files](docs/untrail-demo.gif)
+
+<sub>A real screen recording of Untrail removing a disposable demo app. It was made with <a href="tools/demo">tools/demo</a>, with <code>--hide-user</code> on so paths show as <code>%USERPROFILE%</code>.</sub>
+
+<p align="center"><img src="docs/screenshot.png" alt="Untrail listing what a demo notes app left behind, with sizes and safety ratings" width="820"></p>
 
 ## How it works
 

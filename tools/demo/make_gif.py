@@ -21,7 +21,9 @@ def main():
     a = ap.parse_args()
 
     times = [int(t) for t in open(os.path.join(a.frames, "times.txt")).read().split()]
-    files = [os.path.join(a.frames, "%05d.png" % (i + 1)) for i in range(len(times))]
+    files = [os.path.join(a.frames, "%05d.bmp" % (i + 1)) for i in range(len(times))]
+    n = min(len(files), sum(1 for f in files if os.path.exists(f)))
+    times, files = times[:n], files[:n]
     durations = [times[i + 1] - times[i] for i in range(len(times) - 1)] + [a.end_hold_ms]
 
     kept = []  # [image, duration_ms]

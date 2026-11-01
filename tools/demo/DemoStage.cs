@@ -29,7 +29,14 @@ class DemoStage : Form
 
     readonly Rectangle area;
     readonly string lnk, frames;
-    readonly int fps;
+    readonly int fps, strip;
+
+    // Never activated by clicks, so pressing on the shortcut can't raise this backdrop over Untrail.
+    protected override CreateParams CreateParams
+    {
+        get { CreateParams cp = base.CreateParams; cp.ExStyle |= 0x08000000 /* WS_EX_NOACTIVATE */; return cp; }
+    }
+    protected override bool ShowWithoutActivation { get { return true; } }
     readonly Image icon;
     readonly string label;
     Point down;
@@ -37,20 +44,20 @@ class DemoStage : Form
 
     DemoStage(Rectangle area, int strip, string lnk, string frames, int fps)
     {
-        this.area = area; this.lnk = lnk; this.frames = frames; this.fps = fps;
+        this.area = area; this.lnk = lnk; this.frames = frames; this.fps = fps; this.strip = strip;
         label = Path.GetFileNameWithoutExtension(lnk);
         icon = ShellIcon(lnk);
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
         TopMost = true;   // other windows on the desktop must not cover the recorded area
         StartPosition = FormStartPosition.Manual;
-        Bounds = new Rectangle(area.X, area.Y, strip, area.Height);
+        Bounds = area;   // the whole recorded area: Untrail sits on top of the right-hand part
         BackColor = Color.FromArgb(11, 15, 23);
         DoubleBuffered = true;
         Text = "Untrail demo stage";
     }
 
-    Rectangle IconBox { get { return new Rectangle((Width - 120) / 2, 150, 120, 120); } }
+    Rectangle IconBox { get { return new Rectangle((strip - 120) / 2, 150, 120, 120); } }
 
     protected override void OnPaint(PaintEventArgs e)
     {
@@ -69,20 +76,27 @@ class DemoStage : Form
             g.DrawString(label, f, Brushes.White, new RectangleF(box.X - 10, box.Y + 80, box.Width + 20, 40), sf);
     }
 
+    void Log(string s) { try { File.AppendAllText(Path.Combine(frames, "stage.log"), DateTime.Now.ToString("HH:mm:ss.fff ") + s + Environment.NewLine); } catch { } }
+
     protected override void OnMouseDown(MouseEventArgs e)
     {
+        Log("down " + e.Location + " " + e.Button);
         if (IconBox.Contains(e.Location)) { pressed = true; down = e.Location; Invalidate(); }
     }
 
     protected override void OnMouseMove(MouseEventArgs e)
     {
-        if (!pressed || e.Button != MouseButtons.Left) return;
+        if (!pressed) return;
+        Log("move " + e.Location + " " + e.Button);
+        if (e.Button != MouseButtons.Left) return;
         if (Math.Abs(e.X - down.X) + Math.Abs(e.Y - down.Y) < 6) return;
         pressed = false;
         Invalidate();
         // A real OLE drag of the real shortcut file, exactly like dragging it from Explorer.
         var data = new DataObject(DataFormats.FileDrop, new[] { lnk });
-        DoDragDrop(data, DragDropEffects.Copy | DragDropEffects.Link);
+        Log("drag start");
+        DragDropEffects result = DoDragDrop(data, DragDropEffects.Copy | DragDropEffects.Link);
+        Log("drag end: " + result);
     }
 
     protected override void OnMouseUp(MouseEventArgs e) { pressed = false; Invalidate(); }
@@ -97,10 +111,11 @@ class DemoStage : Form
     void Record()
     {
         while (!File.Exists(Path.Combine(frames, "start"))) Thread.Sleep(30);
-        var times = new List<string>();
         var clock = Stopwatch.StartNew();
         int n = 0;
         long interval = 1000 / fps;
+        // BMP: no compression, so saving keeps up with the frame rate. Times are written as we go.
+        using (var times = new StreamWriter(Path.Combine(frames, "times.txt")) { AutoFlush = true })
         using (var bmp = new Bitmap(area.Width, area.Height, PixelFormat.Format24bppRgb))
         using (Graphics g = Graphics.FromImage(bmp))
         {
@@ -112,12 +127,11 @@ class DemoStage : Form
                 long at = clock.ElapsedMilliseconds;
                 g.CopyFromScreen(area.Location, Point.Empty, area.Size);
                 DrawCursor(g);
-                bmp.Save(Path.Combine(frames, (n + 1).ToString("D5") + ".png"), ImageFormat.Png);
-                times.Add(at.ToString());
+                bmp.Save(Path.Combine(frames, (n + 1).ToString("D5") + ".bmp"), ImageFormat.Bmp);
+                times.WriteLine(at);
                 n++;
             }
         }
-        File.WriteAllLines(Path.Combine(frames, "times.txt"), times);
         BeginInvoke(new Action(Close));
     }
 
