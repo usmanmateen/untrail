@@ -1,3 +1,0 @@
-[files]
-# Images and icons: byte patterns in them aren't words.
-extend-exclude = ["*.png", "*.webp", "*.gif", "*.ico", "*.jpg"]
