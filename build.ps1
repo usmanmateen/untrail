@@ -7,7 +7,7 @@
 #   UntrailSetup.exe               per-user installer with Untrail.exe inside
 #   Untrail-<version>-portable.zip
 #   SHA256SUMS.txt
-param([string]$Version = "1.0.0")
+param([string]$Version = "1.0.0", [string]$OutDir = "dist")
 $ErrorActionPreference = 'Stop'
 
 if ($Version -notmatch '^(\d+)\.(\d+)\.(\d+)') { throw "Version must look like 1.2.3 (got '$Version')" }
@@ -15,7 +15,7 @@ $numeric = "$($Matches[1]).$($Matches[2]).$($Matches[3]).0"
 
 $root = $PSScriptRoot
 $obj = Join-Path $root 'obj'
-$dist = Join-Path $root 'dist'
+$dist = Join-Path $root $OutDir
 New-Item -ItemType Directory -Force $obj, $dist | Out-Null
 Remove-Item "$dist\*" -Force -ErrorAction SilentlyContinue
 

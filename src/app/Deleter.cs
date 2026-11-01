@@ -3,9 +3,14 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Pipes;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading;
 using Microsoft.VisualBasic.FileIO;
 using Microsoft.Win32;
 
@@ -18,6 +23,59 @@ namespace Untrail
         public long Freed;
         public bool AtReboot;
         public string Error;
+    }
+
+    /// <summary>Last line of defence: what Untrail is ever allowed to delete, checked again right before each delete.</summary>
+    public static class Guard
+    {
+        const string Cv = @"\Microsoft\Windows\CurrentVersion\";
+        static readonly string[] SoftwareRoots = { @"HKCU\Software", @"HKLM\SOFTWARE", @"HKLM\SOFTWARE\WOW6432Node" };
+
+        /// <summary>null when allowed, otherwise the reason it isn't.</summary>
+        public static string Check(FoundItem it)
+        {
+            if (string.IsNullOrEmpty(it.Path) || it.Path.IndexOfAny(new[] { '\0', '\r', '\n' }) >= 0) return "Refused: invalid path";
+            if (it.Kind == ItemKind.Folder || it.Kind == ItemKind.File)
+            {
+                string p = Util.NormDir(it.Path);
+                if (p == null || !Path.IsPathRooted(p) || p.StartsWith(@"\\")) return "Refused: not a local path";
+                if (!Util.IsSafeToDelete(p)) return "Refused: protected system location";
+                return null;
+            }
+            if (it.Kind == ItemKind.RegistryValue)
+            {
+                int bar = it.Path.LastIndexOf('|');
+                if (bar <= 0) return "Refused: invalid registry value";
+                string key = it.Path.Substring(0, bar);
+                foreach (string root in SoftwareRoots)
+                    if (Same(key, root + Cv + "Run") || Same(key, root + Cv + "RunOnce")) return null;
+                return "Refused: only start-up entries can be removed as single values";
+            }
+            return CheckKey(it.Path);
+        }
+
+        static string CheckKey(string key)
+        {
+            if (key.Contains("\\\\") || key.EndsWith("\\")) return "Refused: invalid registry path";
+            foreach (string root in SoftwareRoots)
+            {
+                // ...\Uninstall\<one key> and ...\App Paths\<one key>
+                foreach (string list in new[] { Cv + "Uninstall", Cv + "App Paths" })
+                {
+                    string prefix = root + list + "\\";
+                    if (key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && !key.Substring(prefix.Length).Contains("\\")) return null;
+                }
+                // Software\<Vendor or App>[\<App>], never Microsoft, Classes, Policies...
+                if (!key.StartsWith(root + "\\", StringComparison.OrdinalIgnoreCase)) continue;
+                string[] parts = key.Substring(root.Length + 1).Split('\\');
+                if (root == @"HKLM\SOFTWARE" && parts[0].Equals("WOW6432Node", StringComparison.OrdinalIgnoreCase)) continue;
+                if (parts.Length > 2 || Scanner.RegSkip.Contains(parts[0])) return "Refused: protected registry location";
+                return null;
+            }
+            return "Refused: protected registry location";
+        }
+
+        static bool Same(string a, string b) { return string.Equals(a, b, StringComparison.OrdinalIgnoreCase); }
     }
 
     public static class Deleter
@@ -33,36 +91,39 @@ namespace Untrail
             return Path.Combine(Util.Documents, "Untrail Backups", safe + " " + DateTime.Now.ToString("yyyy-MM-dd HHmmss"));
         }
 
-        public static List<DeleteResult> Run(IList<FoundItem> items, bool recycle, string backupDir, Action<string> progress)
+        /// <summary>Deletes items in order, reporting (items finished, text) as it goes. Results come back in input order.</summary>
+        public static List<DeleteResult> Run(IList<FoundItem> items, bool recycle, string backupDir, Action<int, string> progress)
         {
-            var results = new List<DeleteResult>();
-            progress = progress ?? (s => { });
+            var results = new Dictionary<FoundItem, DeleteResult>();
+            progress = progress ?? ((n, s) => { });
             Directory.CreateDirectory(backupDir);
             var log = new StringBuilder();
             log.AppendLine("Untrail removal log " + DateTime.Now.ToString("u"));
             log.AppendLine(recycle ? "Mode: Recycle Bin" : "Mode: permanent delete");
 
             // Files and folders first, registry last (uninstall entry goes only once the files are gone).
+            int done = 0;
             foreach (FoundItem it in items.OrderBy(i => i.Kind >= ItemKind.Registry ? 1 : 0))
             {
                 var r = new DeleteResult { Item = it };
-                progress("Removing " + it.DisplayPath);
+                progress(done, "Removing " + it.DisplayPath);
                 try
                 {
-                    // Re-check every path here: the elevated helper must not trust its job file blindly.
-                    if ((it.Kind == ItemKind.Folder || it.Kind == ItemKind.File) && !Util.IsSafeToDelete(Util.NormDir(it.Path)))
-                        r.Error = "Refused: protected system location";
-                    else if (it.Kind == ItemKind.Folder) DeleteFolder(it, recycle, r);
-                    else if (it.Kind == ItemKind.File) DeleteFile(it, recycle, r);
-                    else DeleteRegistry(it, backupDir, r);
+                    r.Error = Guard.Check(it);
+                    if (r.Error == null)
+                    {
+                        if (it.Kind == ItemKind.Folder) DeleteFolder(it, recycle, r);
+                        else if (it.Kind == ItemKind.File) DeleteFile(it, recycle, r);
+                        else DeleteRegistry(it, backupDir, r);
+                    }
                 }
                 catch (Exception ex) { r.Error = ex.Message; }
-                results.Add(r);
+                results[it] = r;
+                progress(++done, null);
                 log.AppendLine((r.Ok ? (r.AtReboot ? "AT-REBOOT " : "OK        ") : "FAILED    ") + it.DisplayPath + (r.Error != null ? "  -- " + r.Error : ""));
             }
             try { File.WriteAllText(Path.Combine(backupDir, "removal-log.txt"), log.ToString(), Encoding.UTF8); } catch { }
-            // Callers (and the elevated helper's result file) rely on input order.
-            return items.Select(i => results.First(r => r.Item == i)).ToList();
+            return items.Select(i => results[i]).ToList();
         }
 
         static void DeleteFile(FoundItem it, bool recycle, DeleteResult r)
@@ -172,12 +233,19 @@ namespace Untrail
                 int bar = it.Path.LastIndexOf('|');
                 keyPath = it.Path.Substring(0, bar);
                 valueName = it.Path.Substring(bar + 1);
+                if (!Reg.ValueExists(keyPath, valueName)) { r.Ok = true; return; }
             }
-            if (!Reg.Exists(keyPath)) { r.Ok = true; return; }
+            else if (!Reg.Exists(keyPath)) { r.Ok = true; return; }
 
+            // No backup, no delete.
             string backup = Path.Combine(backupDir, new string(it.DisplayPath.Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray()) + ".reg");
             if (backup.Length > 240) backup = Path.Combine(backupDir, Guid.NewGuid().ToString("N") + ".reg");
-            RunHidden(Path.Combine(Environment.SystemDirectory, "reg.exe"), "export \"" + keyPath + "\" \"" + backup + "\" /y");
+            int code = RunHidden(Path.Combine(Environment.SystemDirectory, "reg.exe"), "export \"" + keyPath + "\" \"" + backup + "\" /y");
+            if (code != 0 || !File.Exists(backup) || new FileInfo(backup).Length == 0)
+            {
+                r.Error = "Couldn't back it up first, so it was left alone";
+                return;
+            }
 
             string hive, sub;
             Reg.Split(keyPath, out hive, out sub);
@@ -199,80 +267,136 @@ namespace Untrail
             if (!r.Ok) r.Error = "Access denied";
         }
 
-        static void RunHidden(string exe, string args)
+        static int RunHidden(string exe, string args)
         {
             try
             {
                 var psi = new ProcessStartInfo(exe, args) { CreateNoWindow = true, UseShellExecute = false, WindowStyle = ProcessWindowStyle.Hidden };
-                using (Process p = Process.Start(psi)) p.WaitForExit(120000);
+                using (Process p = Process.Start(psi))
+                {
+                    if (!p.WaitForExit(120000)) return -1;
+                    return p.ExitCode;
+                }
             }
-            catch { }
+            catch { return -1; }
         }
 
         // ---------------------------------------------------------------- elevated helper
+        //
+        // The admin copy of Untrail gets its job over a named pipe that only this process can serve:
+        // nothing passes through a file another program could swap. Each side checks the other's
+        // process ID, and the helper also re-checks every item with Guard before touching it.
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern bool GetNamedPipeClientProcessId(IntPtr pipe, out uint pid);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern bool GetNamedPipeServerProcessId(IntPtr pipe, out uint pid);
+
+        const byte MsgProgress = 1, MsgResult = 2, MsgDone = 3;
 
         /// <summary>Runs the delete in a second copy of Untrail started "as administrator". Throws Win32Exception (1223) if the UAC prompt is declined.</summary>
-        public static List<DeleteResult> RunElevated(List<FoundItem> items, bool recycle, string backupDir)
+        /// <param name="elevate">false runs the helper at the same level (tests use this to exercise the pipe without a UAC prompt).</param>
+        public static List<DeleteResult> RunElevated(List<FoundItem> items, bool recycle, string backupDir, Action<int, string> progress, bool elevate = true)
         {
-            string job = Path.Combine(Path.GetTempPath(), "Untrail-job-" + Guid.NewGuid().ToString("N") + ".txt");
-            WriteJob(job, items, recycle, backupDir);
-            try
+            progress = progress ?? ((n, s) => { });
+            string pipeName = "Untrail-" + Guid.NewGuid().ToString("N");
+            var security = new PipeSecurity();
+            security.AddAccessRule(new PipeAccessRule(WindowsIdentity.GetCurrent().User, PipeAccessRights.ReadWrite, AccessControlType.Allow));
+            security.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), PipeAccessRights.ReadWrite, AccessControlType.Allow));
+
+            var results = items.Select(i => new DeleteResult { Item = i, Error = "The admin helper didn't report back" }).ToList();
+            using (var server = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 0, 0, security))
             {
-                var psi = new ProcessStartInfo(Util.SelfExe, "--job \"" + job + "\"") { UseShellExecute = true, Verb = "runas" };
-                using (Process p = Process.Start(psi)) p.WaitForExit();
-                var results = new List<DeleteResult>();
-                string[] lines = File.Exists(job + ".result") ? File.ReadAllLines(job + ".result", Encoding.UTF8) : new string[0];
-                for (int i = 0; i < items.Count; i++)
+                var psi = new ProcessStartInfo(Util.SelfExe, "--elevated-helper " + pipeName + " " + Process.GetCurrentProcess().Id)
                 {
-                    var r = new DeleteResult { Item = items[i], Error = "The admin helper didn't report back" };
-                    if (i < lines.Length)
+                    UseShellExecute = true, Verb = elevate ? "runas" : "",
+                };
+                using (Process helper = Process.Start(psi))
+                {
+                    IAsyncResult wait = server.BeginWaitForConnection(null, null);
+                    while (!wait.AsyncWaitHandle.WaitOne(200))
+                        if (helper.HasExited) throw new InvalidOperationException("The admin helper closed before it started.");
+                    server.EndWaitForConnection(wait);
+
+                    uint clientPid;
+                    if (!GetNamedPipeClientProcessId(server.SafePipeHandle.DangerousGetHandle(), out clientPid) || clientPid != helper.Id)
+                        throw new InvalidOperationException("Something other than Untrail's admin helper connected. Nothing was deleted.");
+
+                    var w = new BinaryWriter(server, Encoding.UTF8);
+                    w.Write(recycle);
+                    w.Write(backupDir);
+                    w.Write(items.Count);
+                    foreach (FoundItem it in items) { w.Write((int)it.Kind); w.Write(it.Size); w.Write(it.Path); }
+                    w.Flush();
+
+                    var rd = new BinaryReader(server, Encoding.UTF8);
+                    try
                     {
-                        string[] f = lines[i].Split('\t');
-                        r.Ok = f[0] == "1";
-                        r.Freed = long.Parse(f[1]);
-                        r.AtReboot = f[2] == "1";
-                        r.Error = f.Length > 3 && f[3].Length > 0 ? f[3] : null;
+                        while (true)
+                        {
+                            byte msg = rd.ReadByte();
+                            if (msg == MsgDone) break;
+                            if (msg == MsgProgress) progress(rd.ReadInt32(), rd.ReadString());
+                            else if (msg == MsgResult)
+                            {
+                                int i = rd.ReadInt32();
+                                var r = new DeleteResult { Ok = rd.ReadBoolean(), Freed = rd.ReadInt64(), AtReboot = rd.ReadBoolean() };
+                                string err = rd.ReadString();
+                                r.Error = err.Length > 0 ? err : null;
+                                if (i >= 0 && i < items.Count) { r.Item = items[i]; results[i] = r; }
+                            }
+                        }
                     }
-                    results.Add(r);
+                    catch (EndOfStreamException) { }
+                    helper.WaitForExit(10000);
                 }
-                return results;
             }
-            finally
-            {
-                try { File.Delete(job); } catch { }
-                try { File.Delete(job + ".result"); } catch { }
-            }
+            return results;
         }
 
-        public static void WriteJob(string job, IEnumerable<FoundItem> items, bool recycle, string backupDir)
-        {
-            var sb = new StringBuilder();
-            sb.AppendLine(recycle ? "recycle" : "permanent");
-            sb.AppendLine(backupDir);
-            foreach (FoundItem it in items) sb.AppendLine((int)it.Kind + "\t" + it.Size + "\t" + it.Path);
-            File.WriteAllText(job, sb.ToString(), Encoding.UTF8);
-        }
-
-        public static int RunJobFile(string job)
+        /// <summary>Entry point of the admin copy: Untrail.exe --elevated-helper &lt;pipe&gt; &lt;parent pid&gt;.</summary>
+        public static int RunHelper(string pipeName, string parentPid)
         {
             try
             {
-                string[] lines = File.ReadAllLines(job, Encoding.UTF8);
-                bool recycle = lines[0].Trim() == "recycle";
-                string backupDir = lines[1].Trim();
-                var items = new List<FoundItem>();
-                foreach (string line in lines.Skip(2))
+                if (!Regex.IsMatch(pipeName, "^Untrail-[0-9a-f]{32}$")) return 2;
+                using (var client = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut))
                 {
-                    if (line.Trim().Length == 0) continue;
-                    string[] f = line.Split(new[] { '\t' }, 3);
-                    items.Add(new FoundItem { Kind = (ItemKind)int.Parse(f[0]), Size = long.Parse(f[1]), Path = f[2] });
+                    client.Connect(10000);
+                    uint serverPid;
+                    if (!GetNamedPipeServerProcessId(client.SafePipeHandle.DangerousGetHandle(), out serverPid) || serverPid.ToString() != parentPid)
+                        return 3;
+                    // The other end must be this same Untrail.exe, not some other program.
+                    if (!Util.SamePath(Util.ProcessPath((int)serverPid), Util.SelfExe)) return 4;
+
+                    var rd = new BinaryReader(client, Encoding.UTF8);
+                    bool recycle = rd.ReadBoolean();
+                    string backupDir = rd.ReadString();
+                    int n = rd.ReadInt32();
+                    if (n < 0 || n > 100000) return 5;
+                    var items = new List<FoundItem>();
+                    for (int i = 0; i < n; i++)
+                        items.Add(new FoundItem { Kind = (ItemKind)rd.ReadInt32(), Size = rd.ReadInt64(), Path = rd.ReadString() });
+                    string bd = Util.NormDir(backupDir);
+                    if (bd == null || !Path.IsPathRooted(bd) || !"Untrail Backups".Equals(Path.GetFileName(Path.GetDirectoryName(bd)), StringComparison.OrdinalIgnoreCase))
+                        return 6;
+
+                    var w = new BinaryWriter(client, Encoding.UTF8);
+                    object gate = new object();
+                    List<DeleteResult> results = Run(items, recycle, backupDir, (done, text) =>
+                    {
+                        lock (gate) { w.Write(MsgProgress); w.Write(done); w.Write(text ?? ""); w.Flush(); }
+                    });
+                    for (int i = 0; i < results.Count; i++)
+                    {
+                        DeleteResult r = results[i];
+                        w.Write(MsgResult); w.Write(i); w.Write(r.Ok); w.Write(r.Freed); w.Write(r.AtReboot); w.Write(r.Error ?? "");
+                    }
+                    w.Write(MsgDone);
+                    w.Flush();
+                    client.WaitForPipeDrain();
+                    return 0;
                 }
-                List<DeleteResult> results = Run(items, recycle, backupDir, null);
-                var sb = new StringBuilder();
-                foreach (DeleteResult r in results)
-                    sb.AppendLine((r.Ok ? "1" : "0") + "\t" + r.Freed + "\t" + (r.AtReboot ? "1" : "0") + "\t" + (r.Error ?? "").Replace('\t', ' ').Replace('\n', ' ').Replace('\r', ' '));
-                File.WriteAllText(job + ".result", sb.ToString(), Encoding.UTF8);
-                return 0;
             }
             catch { return 1; }
         }

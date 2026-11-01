@@ -52,12 +52,14 @@ Untrail needs Windows 10 or 11. It uses the .NET Framework that's already built 
 
 ## Built to be careful
 
-- **It never touches Windows**, system folders, or top-level folders such as `Program Files`, `AppData` or `Documents`.
+- **It never touches Windows**, system folders, or top-level folders such as `Program Files`, `AppData` or `Documents`. Before each delete, every path is checked again against a strict allowlist. For the registry, that means only the app's own `Software\<App>` keys, its Installed-apps entry, App Paths and start-up entries.
 - **It never removes another app's files.** A folder that also holds a different installed app is skipped, even when it shares the publisher's name.
-- **It refuses things it shouldn't uninstall.** Browser "web apps" (Chrome/Edge shortcuts) and built-in Windows apps get an explanation instead of a scan.
+- **A matching name alone isn't enough.** To be ticked as *Safe to remove*, a folder must have been used since the app was installed. Folders with common-word names (like "Notes") always need your review.
+- **It waits for the app's own uninstaller to really finish.** Many uninstallers hand off to a hidden copy of themselves, and Steam hands off to the Steam window, so Untrail follows the uninstaller's process tree. It carries on only once that tree has ended and the app is gone. If you cancel the uninstaller, nothing is deleted unless you choose to.
+- **No backup, no delete.** Registry entries are exported to `Documents\Untrail Backups` first (double-click a `.reg` file to restore one). If the export fails, the entry is left alone. A removal log is saved alongside.
+- **It re-checks after cleaning.** Untrail scans again and shows anything still there, instead of assuming everything is gone.
 - **Files go to the Recycle Bin** by default. Tick *Delete permanently* if you want the space back straight away.
-- **Registry entries are backed up** to `Documents\Untrail Backups` before they're removed (double-click a `.reg` file to restore it). A removal log is saved alongside.
-- **Admin rights are asked for only when needed**, for items in `Program Files`, `ProgramData` or the machine-wide registry.
+- **Admin rights are asked for only when needed**, for items in `Program Files`, `ProgramData` or the machine-wide registry. The admin helper receives its job over a private pipe from the Untrail window, and each side verifies the other.
 
 ## Limitations
 
@@ -86,6 +88,22 @@ To check what a scan would find without opening the window or changing anything:
 
 ```bash
 Untrail.exe --scan "C:\Users\you\Desktop\Some App.lnk" --out report.txt
+```
+
+### Tests
+
+`tests/integration.ps1` installs throwaway fake apps, runs the real delete path and checks the results. The fake apps cover:
+
+- an NSIS-style uninstaller that hands off to a temp copy of itself;
+- same-publisher and same-name decoys that must survive;
+- registry backups;
+- the admin helper;
+- a self-test of the delete allowlist.
+
+It runs on every push, on GitHub's disposable Windows machines. It's safe to run locally too: it only creates and removes fixtures named "Zephyr …", and the machine-wide part runs only as admin.
+
+```bash
+powershell -ExecutionPolicy Bypass -File tests/integration.ps1 -Exe dist/Untrail.exe
 ```
 
 ### Releasing

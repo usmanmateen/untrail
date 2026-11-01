@@ -47,7 +47,7 @@ namespace Untrail
         public string KeyPath;      // e.g. HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{GUID}
         public string KeyName;
         public string DisplayName = "", Publisher = "", DisplayVersion = "";
-        public string InstallLocation, UninstallString, QuietUninstallString, DisplayIcon;
+        public string InstallLocation, UninstallString, QuietUninstallString, DisplayIcon, InstallDate;
         public long EstimatedSizeKB;
         public bool WindowsInstaller;
         public bool Hidden;
@@ -64,6 +64,7 @@ namespace Untrail
         public List<string> Pub = new List<string>();
         public List<string> Notes = new List<string>();
         public string InstallDirWarning;
+        public DateTime? InstalledAt;   // set by the first scan
 
         public bool HasUninstaller
         {
@@ -194,6 +195,18 @@ namespace Untrail
             "package","packages","squirrel","electron","node","java","web","browser","documents","logs","log","crash",
             "crashpad","crashreports","files","downloads","new","test","demo","free","pro","lite","portable","beta",
             "unins000","uninst","start","run","win","win64","win32","driver","drivers","sdk","support","assets","resources",
+        };
+
+        /// <summary>Real words other software uses for its folders too: a name match alone isn't proof of ownership.</summary>
+        public static readonly HashSet<string> CommonWords = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "notes","note","notepad","music","photos","photo","pictures","mail","email","chat","camera","video","videos",
+            "player","studio","editor","office","cloud","sync","drive","backup","backups","viewer","reader","scanner",
+            "recorder","manager","monitor","terminal","console","assistant","translator","calculator","calendar","weather",
+            "maps","news","store","shop","games","game","paint","draw","sketch","explorer","finder","search","messenger",
+            "meet","share","files","home","work","notebook","journal","tasks","todo","clock","timer","radio","tv","books",
+            "library","media","stream","capture","screenshot","clipboard","password","passwords","vault","wallet","vpn",
+            "proxy","server","agent","daemon","tray","widget","widgets","theme","themes","fonts","icons","profiles","profile",
         };
 
         public static string Key(string s)

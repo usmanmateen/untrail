@@ -350,6 +350,7 @@ namespace Untrail
         {
             busy = on;
             progress.Visible = on;
+            if (on) progress.Style = ProgressBarStyle.Marquee; // the delete step switches it to real progress
             if (text != null) status.Text = text;
             foreach (Control c in new Control[] { btnBrowse, btnPick, btnRescan, chkDeep, chkPermanent, chkUninstaller, list })
                 c.Enabled = !on;
@@ -556,13 +557,13 @@ namespace Untrail
             else if (items.Count == 0)
             {
                 lblSize.Text = "All clean";
-                lblSizeSub.Text = "nothing of this app is left on your PC";
+                lblSizeSub.Text = "no leftovers found in the places Untrail looks";
                 lblHint.Text = "";
             }
             else
             {
                 lblSize.Text = Util.FormatSize(size);
-                lblSizeSub.Text = "to be freed  ·  " + sel.Count + " of " + items.Count + " items selected";
+                lblSizeSub.Text = "selected to free  ·  " + sel.Count + " of " + items.Count + " items  ·  " + Util.FormatSize(all) + " found";
                 lblHint.Text = "“Safe to remove” items are ticked. Tick “Review” or “Keep” items only if you recognise them.";
             }
             bar.Value = all > 0 ? (float)size / all : 0;
@@ -632,50 +633,34 @@ namespace Untrail
             else DoDelete(selected, before, recycle);
         }
 
-        static void UninstallCommand(UninstallEntry e, out string file, out string args)
-        {
-            string cmd = e.UninstallString;
-            if (string.IsNullOrWhiteSpace(cmd) && e.WindowsInstaller && e.KeyName.StartsWith("{")) cmd = "MsiExec.exe /X" + e.KeyName;
-            Util.SplitCommand(cmd, out file, out args);
-            if (Path.GetFileName(file).StartsWith("msiexec", StringComparison.OrdinalIgnoreCase))
-            {
-                file = Path.Combine(Environment.SystemDirectory, "msiexec.exe");
-                args = Regex.Replace(args, @"/I\s*\{", "/X{", RegexOptions.IgnoreCase);
-            }
-            else if (!File.Exists(file))
-                throw new FileNotFoundException("its uninstaller is missing (" + file + ")");
-        }
-
         void RunUninstaller(Action next)
         {
             SetBusy(true, "Running " + app.Name + "'s uninstaller — follow its window…");
-            UninstallEntry e = app.Entry;
-            RunBg(() =>
+            UninstallRunner run;
+            try { run = UninstallRunner.Start(app); }
+            catch (Exception err)
             {
-                string file, args;
-                UninstallCommand(e, out file, out args);
-                var psi = new ProcessStartInfo(file, args) { UseShellExecute = true };
-                try { psi.WorkingDirectory = Path.GetDirectoryName(file); } catch { }
-                using (Process p = Process.Start(psi)) if (p != null) p.WaitForExit();
-            }, err =>
-            {
-                if (err != null)
+                string why = Deleter.IsUacCancelled(err) ? "the admin prompt was declined" : err.Message;
+                if (MessageBox.Show(this, "The app's uninstaller couldn't run: " + why + ".\n\nRemove the selected files anyway?",
+                        "Untrail", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
                 {
-                    string why = Deleter.IsUacCancelled(err) ? "the admin prompt was declined" : err.Message;
-                    if (MessageBox.Show(this, "The app's uninstaller couldn't run: " + why + ".\n\nRemove the selected files anyway?",
-                            "Untrail", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
-                    {
-                        SetBusy(false, "Cancelled.");
-                        return;
-                    }
-                }
-                else
-                {
-                    MessageBox.Show(this, "If the uninstaller window is still open, finish it first.\n\nClick OK when it's completely done — Untrail will then remove whatever it left behind.",
-                        "Waiting for the uninstaller", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    SetBusy(false, "Cancelled. Nothing was deleted.");
+                    return;
                 }
                 next();
-            });
+                return;
+            }
+            // Waits for the uninstaller's whole process tree and for the app to actually disappear.
+            using (var wait = new UninstallWaitForm(run, scale))
+            {
+                wait.ShowDialog(this);
+                if (wait.Result == UninstallWaitForm.Outcome.Stop)
+                {
+                    SetBusy(false, "Stopped. Untrail didn't delete anything.");
+                    return;
+                }
+            }
+            next();
         }
 
         void DoDelete(List<FoundItem> selected, Dictionary<FoundItem, long> before, bool recycle)
@@ -686,15 +671,32 @@ namespace Untrail
             List<FoundItem> remaining = null;
             RunBg(() =>
             {
+                // Re-check after the uninstaller: only what's still there, at its current size.
+                Progress("Checking what the uninstaller left…");
                 remaining = selected.Where(Scanner.StillExists).ToList();
                 foreach (FoundItem it in remaining) if (it.Kind == ItemKind.Folder) it.Size = Util.DirSize(it.Path, null);
+                int total = remaining.Count;
+                Action<int, string> step = (done, text) =>
+                {
+                    try
+                    {
+                        BeginInvoke(new Action(() =>
+                        {
+                            progress.Style = ProgressBarStyle.Continuous;
+                            progress.Maximum = Math.Max(1, total);
+                            progress.Value = Math.Min(done, progress.Maximum);
+                            if (text != null) status.Text = "(" + Math.Min(done + 1, total) + "/" + total + ")  " + text;
+                        }));
+                    }
+                    catch { }
+                };
                 if (remaining.Count == 0) results = new List<DeleteResult>();
                 else if (remaining.Any(i => i.NeedsAdmin) && !Util.IsAdmin)
                 {
                     Progress("Waiting for admin permission…");
-                    results = Deleter.RunElevated(remaining, recycle, backup);
+                    results = Deleter.RunElevated(remaining, recycle, backup, step);
                 }
-                else results = Deleter.Run(remaining, recycle, backup, Progress);
+                else results = Deleter.Run(remaining, recycle, backup, step);
             }, err =>
             {
                 if (err != null && Deleter.IsUacCancelled(err) && remaining != null)
@@ -730,12 +732,26 @@ namespace Untrail
                 if (r.Item.Kind == ItemKind.Folder && before.ContainsKey(r.Item))
                     freed += Math.Max(0, before[r.Item] - Util.DirSize(r.Item.Path, null));
 
-            items.RemoveAll(gone.Contains);
             string name = app.Name;
+            AppInfo current = app;
+            SetBusy(true, "Re-checking for anything left behind…");
+            List<FoundItem> left = null;
+            RunBg(() => left = Scanner.Scan(current, Scanner.GetUninstallEntries(), false, Progress, null), err =>
+            {
+                if (err != null) left = selected.Where(Scanner.StillExists).ToList();
+                ReportRemoval(name, left, failed, reboot, freed, recycle, backup);
+            });
+        }
+
+        void ReportRemoval(string name, List<FoundItem> left, List<DeleteResult> failed, List<DeleteResult> reboot, long freed, bool recycle, string backup)
+        {
+            // The list now shows what the fresh scan found, not what we expected to be gone.
+            items = left;
             PopulateList();
+            int safeLeft = left.Count(i => i.Conf == Confidence.Sure);
 
             var sb = new StringBuilder();
-            sb.AppendLine(failed.Count == 0 ? name + " has been removed." : "Mostly done — a few things couldn't be removed.");
+            sb.AppendLine(failed.Count == 0 && safeLeft == 0 ? name + " has been removed." : "Mostly done — a few things couldn't be removed.");
             sb.AppendLine();
             sb.AppendLine(recycle ? "Moved to the Recycle Bin: " + Util.FormatSize(freed) + "\n(Empty the Recycle Bin to get the space back.)"
                                   : "Space freed: " + Util.FormatSize(freed));
@@ -748,16 +764,23 @@ namespace Untrail
                 if (failed.Count > 8) sb.AppendLine("…and " + (failed.Count - 8) + " more (see the log).");
             }
             sb.AppendLine();
+            if (safeLeft > 0)
+                sb.AppendLine("Re-checked: " + safeLeft + " item(s) are still there — they're listed in the window.");
+            else if (left.Count > 0)
+                sb.AppendLine("Re-checked: nothing marked safe is left. " + left.Count + " item(s) need your review — they're listed in the window.");
+            else
+                sb.AppendLine("Re-checked: no leftovers found in the places Untrail looks.");
+            sb.AppendLine();
             sb.AppendLine("Log and registry backups: " + backup);
             SetBusy(false, failed.Count == 0 ? name + " removed." : failed.Count + " item(s) couldn't be removed.");
-            MessageBox.Show(this, sb.ToString(), "Untrail", MessageBoxButtons.OK, failed.Count == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+            MessageBox.Show(this, sb.ToString(), "Untrail", MessageBoxButtons.OK, failed.Count == 0 && safeLeft == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
 
             if (items.Count == 0)
             {
                 ShowEmpty();
-                lblName.Text = "✓  " + name + " is gone";
-                lblPublisher.Text = "Nothing was left behind. Drop another app to clean it up too.";
-                lblInstall.Text = "";
+                lblName.Text = "✓  " + name + " removed";
+                lblPublisher.Text = "Re-checked: no leftovers found in the places Untrail looks.";
+                lblInstall.Text = "Drop another app to clean it up too.";
             }
         }
     }

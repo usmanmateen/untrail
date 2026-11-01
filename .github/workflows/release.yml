@@ -23,14 +23,9 @@ jobs:
           $version = if ($ref -match '^v(\d+\.\d+\.\d+.*)$') { $Matches[1] } else { '0.0.0-dev' }
           ./build.ps1 -Version $version
 
-      - name: Smoke test
+      - name: Integration tests (fake apps, real deletes, admin helper)
         shell: pwsh
-        run: |
-          # Scans a throwaway folder; proves the exe starts and the scanner runs on a clean machine.
-          New-Item -ItemType Directory "$env:TEMP\SmokeApp" | Out-Null
-          $p = Start-Process dist/Untrail.exe -ArgumentList "--scan `"$env:TEMP\SmokeApp`" --out smoke.txt" -Wait -PassThru
-          Get-Content smoke.txt
-          if ($p.ExitCode -ne 0) { throw "scan failed" }
+        run: ./tests/integration.ps1 -Exe dist/Untrail.exe
 
       - uses: actions/upload-artifact@v6
         with:

@@ -1,4 +1,5 @@
 obj/
 dist/
+dist-*/
 *.exe
 __pycache__/

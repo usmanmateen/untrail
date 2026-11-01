@@ -62,6 +62,7 @@ namespace Untrail
                                     UninstallString = Reg.Str(e, "UninstallString"),
                                     QuietUninstallString = Reg.Str(e, "QuietUninstallString"),
                                     DisplayIcon = Reg.Str(e, "DisplayIcon"),
+                                    InstallDate = Reg.Str(e, "InstallDate"),
                                     EstimatedSizeKB = Reg.Num(e, "EstimatedSize"),
                                     WindowsInstaller = Reg.Num(e, "WindowsInstaller") == 1,
                                     Hidden = Reg.Num(e, "SystemComponent") == 1,
@@ -401,6 +402,7 @@ namespace Untrail
             public List<KeyValuePair<string, string>> OtherDirs = new List<KeyValuePair<string, string>>(); // dir, app name
             public Action<string> Progress;
             public Func<bool> Cancelled;
+            public DateTime? InstalledAt;
         }
 
         public static List<FoundItem> Scan(AppInfo app, List<UninstallEntry> entries, bool deep, Action<string> progress, Func<bool> cancelled)
@@ -435,6 +437,9 @@ namespace Untrail
             }
             if (app.ExtraDir != null)
                 Add(c, app.ExtraDir, ItemKind.Folder, Confidence.Likely, Cat.Program, "Install folder named in the app's uninstall record", false);
+            // Remembered on the app so a re-scan after removal (install folder gone) still knows it.
+            if (!app.InstalledAt.HasValue) app.InstalledAt = InstallTime(app);
+            c.InstalledAt = app.InstalledAt;
 
             c.Progress("Looking in AppData…");
             ScanContainer(c, Util.LocalAppData, Cat.AppData, 2, Confidence.Sure);
@@ -485,6 +490,7 @@ namespace Untrail
             if (n.Length < 3) return null;
             foreach (string k in c.App.Strong)
             {
+                if (n == k && Util.CommonWords.Contains(k)) { reason = "Same name as the app, but it's a common word"; return Confidence.Likely; }
                 if (n == k) { reason = "Name matches the app"; return Confidence.Sure; }
                 if (n == k + "updater") { reason = "The app's update cache"; return Confidence.Sure; } // Electron apps: "<name>-updater"
             }
@@ -498,6 +504,34 @@ namespace Untrail
                 if (k.Length >= 6 && n.Contains(k)) { reason = "Name contains the app's name"; return Confidence.Maybe; }
             }
             return null;
+        }
+
+        /// <summary>
+        /// A matching name alone doesn't prove a folder is the app's. To stay "Safe to remove" it also has to have been
+        /// used since the app was installed; null when that holds, otherwise why it's only "Review".
+        /// </summary>
+        static string OwnershipDoubt(Ctx c, string dir)
+        {
+            if (!c.InstalledAt.HasValue) return "Same name as the app — check it's the app's";
+            DateTime last;
+            try
+            {
+                last = Directory.GetLastWriteTime(dir);
+                foreach (FileSystemInfo f in new DirectoryInfo(dir).EnumerateFileSystemInfos().Take(300))
+                    if (f.LastWriteTime > last) last = f.LastWriteTime;
+            }
+            catch { return null; }
+            return last >= c.InstalledAt.Value.AddDays(-2) ? null : "Same name as the app, but untouched since before it was installed";
+        }
+
+        static DateTime? InstallTime(AppInfo app)
+        {
+            DateTime? t = null;
+            try { if (app.InstallDir != null && Directory.Exists(app.InstallDir)) t = Directory.GetCreationTime(app.InstallDir); } catch { }
+            DateTime d;
+            if (app.Entry != null && DateTime.TryParseExact(app.Entry.InstallDate ?? "", "yyyyMMdd", null, System.Globalization.DateTimeStyles.None, out d))
+                t = t.HasValue && t.Value < d ? t : d;
+            return t;
         }
 
         static string Overlap(Ctx c, string dir, bool isInstallDir)
@@ -521,6 +555,8 @@ namespace Untrail
                 if (kind == ItemKind.Folder && Overlap(c, path, isInstallDir) != null && !isInstallDir) return;
             }
             if (c.Items.Any(i => string.Equals(i.Path, path, StringComparison.OrdinalIgnoreCase))) return;
+            var item = new FoundItem { Path = path, Kind = kind };
+            if (!StillExists(item)) return; // e.g. a re-scan after removal: the dropped shortcut or uninstall entry is gone
             c.Items.Add(new FoundItem
             {
                 Path = path, Kind = kind, Conf = conf, Category = cat, Reason = reason,
@@ -545,7 +581,13 @@ namespace Untrail
                 Confidence? m = Match(c, name, out reason);
                 if (m.HasValue)
                 {
-                    Add(c, dir, ItemKind.Folder, Weaker(m.Value, cap), cat, reason, false);
+                    Confidence conf = Weaker(m.Value, cap);
+                    if (conf == Confidence.Sure)
+                    {
+                        string doubt = OwnershipDoubt(c, dir);
+                        if (doubt != null) { conf = Confidence.Likely; reason = doubt; }
+                    }
+                    Add(c, dir, ItemKind.Folder, conf, cat, reason, false);
                 }
                 else if (depth >= 2 && c.App.Pub.Contains(Util.Key(name)))
                 {
@@ -596,7 +638,7 @@ namespace Untrail
             }
         }
 
-        static readonly HashSet<string> RegSkip = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        public static readonly HashSet<string> RegSkip = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "Microsoft", "Classes", "Policies", "Wow6432Node", "Clients", "RegisteredApplications", "ODBC",
             "Windows", "Description", "Hardware", "Setup", "System", "AppDataLow", "Intel", "Khronos", "Partner",
