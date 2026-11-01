@@ -1,0 +1,47 @@
+name: Build & release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $ref = '${{ github.ref_name }}'
+          $version = if ($ref -match '^v(\d+\.\d+\.\d+.*)$') { $Matches[1] } else { '0.0.0-dev' }
+          ./build.ps1 -Version $version
+
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          # Scans a throwaway folder; proves the exe starts and the scanner runs on a clean machine.
+          New-Item -ItemType Directory "$env:TEMP\SmokeApp" | Out-Null
+          $p = Start-Process dist/Untrail.exe -ArgumentList "--scan `"$env:TEMP\SmokeApp`" --out smoke.txt" -Wait -PassThru
+          Get-Content smoke.txt
+          if ($p.ExitCode -ne 0) { throw "scan failed" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: untrail
+          path: dist/*
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create '${{ github.ref_name }}' dist/UntrailSetup.exe (Get-Item dist/*.zip) dist/SHA256SUMS.txt `
+            --title 'Untrail ${{ github.ref_name }}' --generate-notes
