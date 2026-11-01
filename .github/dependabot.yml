@@ -1,0 +1,12 @@
+version: 2
+updates:
+  # Untrail has no package dependencies; the workflows' pinned actions are its only third-party code.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+    commit-message:
+      prefix: ci

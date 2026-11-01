@@ -1,42 +1,52 @@
-name: Build & release
+name: Release
 
 on:
   push:
-    branches: [main]
     tags: ['v*']
-  pull_request:
-  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build:
+  release:
+    name: Build, test and publish
     runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write      # create the GitHub release
+      id-token: write      # sign the build provenance
+      attestations: write  # store the build provenance
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Build
         shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
-          $ref = '${{ github.ref_name }}'
-          $version = if ($ref -match '^v(\d+\.\d+\.\d+.*)$') { $Matches[1] } else { '0.0.0-dev' }
-          ./build.ps1 -Version $version
+          if ($env:TAG -notmatch '^v(\d+\.\d+\.\d+)$') { throw "Release tags look like v1.2.3, not $env:TAG" }
+          ./build.ps1 -Version $Matches[1]
 
       - name: Integration tests (fake apps, real deletes, admin helper)
         shell: pwsh
         run: ./tests/integration.ps1 -Exe dist/Untrail.exe
 
-      - uses: actions/upload-artifact@v6
+      # Lets anyone check a download came from this workflow: gh attestation verify <file> -R usmanmateen/untrail
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          name: untrail
-          path: dist/*
+          subject-path: |
+            dist/UntrailSetup.exe
+            dist/Untrail.exe
+            dist/*.zip
 
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
         run: |
-          gh release create '${{ github.ref_name }}' dist/UntrailSetup.exe (Get-Item dist/*.zip) dist/SHA256SUMS.txt `
-            --title 'Untrail ${{ github.ref_name }}' --generate-notes
+          gh release create $env:TAG dist/UntrailSetup.exe (Get-Item dist/*.zip) dist/SHA256SUMS.txt `
+            --title "Untrail $env:TAG" --generate-notes --verify-tag

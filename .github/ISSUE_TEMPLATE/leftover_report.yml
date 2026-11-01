@@ -1,0 +1,40 @@
+name: Leftover report
+description: Untrail missed something an app left behind, or matched something that isn't the app's
+labels: [matching]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! These reports are how Untrail learns new apps.
+        Run `Untrail.exe --scan "<shortcut or exe>" --hide-user --out report.txt` and attach `report.txt`.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What went wrong?
+      options:
+        - It missed a leftover
+        - It marked something Safe to remove that isn't the app's
+        - It marked a real leftover as Review
+    validations:
+      required: true
+  - type: input
+    id: app
+    attributes:
+      label: App and version
+      placeholder: "Example App 3.2 (installed from example.com)"
+    validations:
+      required: true
+  - type: textarea
+    id: paths
+    attributes:
+      label: Which paths or registry keys?
+      description: Use %USERPROFILE% in place of your user folder.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: Scan report
+      description: Paste or attach the output of `--scan ... --hide-user`.
+      render: text
