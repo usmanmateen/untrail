@@ -32,7 +32,7 @@ jobs:
           Get-Content smoke.txt
           if ($p.ExitCode -ne 0) { throw "scan failed" }
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: untrail
           path: dist/*
