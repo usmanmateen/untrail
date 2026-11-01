@@ -14,6 +14,15 @@
   <a href="https://github.com/usmanmateen/untrail/releases/latest">Portable zip and all downloads</a>
 </p>
 
+<p align="center">
+  <a href="https://github.com/usmanmateen/untrail/actions/workflows/ci.yml"><img src="https://github.com/usmanmateen/untrail/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/usmanmateen/untrail/actions/workflows/codeql.yml"><img src="https://github.com/usmanmateen/untrail/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/usmanmateen/untrail"><img src="https://api.scorecard.dev/projects/github.com/usmanmateen/untrail/badge" alt="OpenSSF Scorecard"></a>
+  <a href="https://github.com/usmanmateen/untrail/releases/latest"><img src="https://img.shields.io/github/v/release/usmanmateen/untrail" alt="Latest release"></a>
+  <a href="https://github.com/usmanmateen/untrail/releases"><img src="https://img.shields.io/github/downloads/usmanmateen/untrail/total" alt="Downloads"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/usmanmateen/untrail" alt="MIT License"></a>
+</p>
+
 Uninstalling an app on Windows often leaves a lot behind: caches and settings in AppData, update downloads, Start-menu shortcuts, start-up entries and registry keys. Some of these run to gigabytes. Untrail runs the app's own uninstaller, finds what's left, explains why each item belongs to the app, and removes what you approve.
 
 ## See Untrail in action
@@ -155,11 +164,17 @@ powershell -ExecutionPolicy Bypass -File tests/integration.ps1 -Exe dist/Untrail
 
 ## Releasing
 
-Push a version tag. GitHub Actions builds on Windows, runs the tests, and publishes the installer, portable zip and checksums:
+Push a version tag. GitHub Actions builds on Windows, runs the tests, attests the build provenance, and publishes the installer, portable zip and checksums:
 
 ```bash
-git tag v1.1.1 && git push origin v1.1.1
+git tag v1.1.2 && git push origin v1.1.2
 ```
+
+## Contributing
+
+Found something Untrail missed, or matched wrongly? Open a [leftover report](https://github.com/usmanmateen/untrail/issues/new?template=leftover_report.yml). That's the most useful contribution there is. For code changes, see [CONTRIBUTING.md](CONTRIBUTING.md). Every pull request runs the build, the integration tests, PowerShell lint, a spell check, CodeQL, dependency review and a workflow audit, and `main` only accepts changes through pull requests that pass them.
+
+Security problems: please report them privately, as described in [SECURITY.md](SECURITY.md).
 
 ## License
 

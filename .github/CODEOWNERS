@@ -1,0 +1,5 @@
+# Every change needs the maintainer's eye; the delete path and the workflows most of all.
+*                   @usmanmateen
+/src/app/Deleter.cs @usmanmateen
+/src/app/Scope.cs   @usmanmateen
+/.github/           @usmanmateen

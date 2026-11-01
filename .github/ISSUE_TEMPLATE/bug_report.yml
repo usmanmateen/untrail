@@ -1,0 +1,31 @@
+name: Bug report
+description: Untrail crashed, froze or did something unexpected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Untrail version
+      placeholder: "1.1.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: windows
+    attributes:
+      label: Windows version
+      options: [Windows 11, Windows 10]
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Error message or removal log
+      description: The log is in Documents\Untrail Backups. Check it for anything private before pasting.
+      render: text

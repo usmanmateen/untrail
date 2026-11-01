@@ -4,7 +4,7 @@
 //   DemoStage.exe <x> <y> <width> <height> <stripWidth> <shortcut.lnk> <framesDir> <fps>
 //
 // Recording starts when <framesDir>\start exists and stops when <framesDir>\stop exists.
-// Frames are PNGs of the screen area (with the mouse cursor drawn in); times.txt lists each frame's time in ms.
+// Frames are BMP files of the screen area (with the mouse cursor drawn in); times.txt lists each frame's time in ms.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

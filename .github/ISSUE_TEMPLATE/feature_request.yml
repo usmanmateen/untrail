@@ -1,0 +1,16 @@
+name: Feature request
+description: Suggest an idea for Untrail
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like Untrail to do?
+    validations:
+      required: true
