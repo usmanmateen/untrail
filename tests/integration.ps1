@@ -101,6 +101,8 @@ try {
     Set-ItemProperty "HKCU:\$uKey" Publisher 'Zephyr Labs Ltd'
     Set-ItemProperty "HKCU:\$uKey" InstallLocation $install
     Set-ItemProperty "HKCU:\$uKey" UninstallString "`"$install\uninst.exe`" `"$install`" `"$uKey`""
+    # A fresh machine has no Run key yet. Only create it when missing: New-Item -Force would wipe existing start-up entries.
+    if (-not (Test-Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run')) { New-Item 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' | Out-Null }
     Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' ZephyrPaintPro "`"$install\ZephyrPaint.exe`" --tray"
 
     $code = Purge "$work\$name.lnk" "$work\user.txt" @('--run-uninstaller')
