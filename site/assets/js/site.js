@@ -55,7 +55,7 @@
     if (assets["SHA256SUMS.txt"]) each("[data-sums]", function (a) { a.href = assets["SHA256SUMS.txt"].browser_download_url; });
 
     var line = document.querySelector("[data-release-line]");
-    if (line && version) line.textContent = "Version " + version + " · Installer (.zip) · No admin rights needed · MIT licence";
+    if (line && version) line.textContent = "v" + version + " · Free and open source · Windows 10 & 11 · No admin rights needed";
     var sub = document.querySelector("[data-release-sub]");
     if (sub && version) sub.textContent = "Version " + version + ", released " + date(rel.published_at) + ". For Windows 10 and 11.";
   }).catch(function () { /* offline or rate-limited: the static links still work */ });
