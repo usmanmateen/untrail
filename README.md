@@ -9,7 +9,9 @@
 <p align="center">Remove applications and the files they leave behind.</p>
 
 <p align="center">
-  <a href="https://github.com/usmanmateen/untrail/releases/latest/download/UntrailSetup.exe"><b>⬇ Download the installer</b></a>
+  <a href="https://usmanmateen.github.io/untrail/"><b>Website</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/usmanmateen/untrail/releases/latest/download/UntrailSetup.zip"><b>⬇ Download the installer</b></a>
   &nbsp;·&nbsp;
   <a href="https://github.com/usmanmateen/untrail/releases/latest">Portable zip and all downloads</a>
 </p>
@@ -49,7 +51,7 @@ Uninstalling an app on Windows often leaves a lot behind: caches and settings in
 
 ## Download
 
-- **[Installer](https://github.com/usmanmateen/untrail/releases/latest/download/UntrailSetup.exe):** installs for your Windows account only (no admin rights needed) and adds Untrail to the Start menu. To remove it, use **Settings → Apps → Installed apps → Untrail**.
+- **[Installer](https://github.com/usmanmateen/untrail/releases/latest/download/UntrailSetup.zip):** a zip with `UntrailSetup.exe`, install notes and the licence (also available as a [single .exe](https://github.com/usmanmateen/untrail/releases/latest/download/UntrailSetup.exe)). It installs for your Windows account only (no admin rights needed) and adds Untrail to the Start menu. To remove it, use **Settings → Apps → Installed apps → Untrail**.
 - **Portable:** download `Untrail-<version>-portable.zip` from the [releases page](https://github.com/usmanmateen/untrail/releases/latest) and run `Untrail.exe`.
 
 It works on Windows 10 and 11 and uses the .NET Framework already built into Windows.
@@ -122,7 +124,7 @@ Untrail is plain C# for .NET Framework 4.8. It's compiled with the `csc.exe` tha
 powershell -ExecutionPolicy Bypass -File build.ps1 -Version 1.1.1
 ```
 
-This writes `dist/Untrail.exe`, `dist/UntrailSetup.exe`, the portable zip and `SHA256SUMS.txt`.
+This writes `dist/Untrail.exe`, `dist/UntrailSetup.exe`, `dist/UntrailSetup.zip`, the portable zip and `SHA256SUMS.txt`.
 
 | Path | What's there |
 |---|---|
@@ -132,6 +134,7 @@ This writes `dist/Untrail.exe`, `dist/UntrailSetup.exe`, the portable zip and `S
 | `src/assets` | Logo and icon, generated from `brand/` by `tools/make_assets.py` |
 | `tests` | Integration tests |
 | `tools/demo` | Scripts that produce the README screenshots and demo recording |
+| `site` | The website, deployed to [usmanmateen.github.io/untrail](https://usmanmateen.github.io/untrail/) by `.github/workflows/pages.yml` |
 
 To see what a scan would find without changing anything:
 

@@ -39,8 +39,9 @@ jobs:
         with:
           subject-path: |
             dist/UntrailSetup.exe
+            dist/UntrailSetup.zip
             dist/Untrail.exe
-            dist/*.zip
+            dist/Untrail-*-portable.zip
 
       - name: Publish release
         shell: pwsh
@@ -48,5 +49,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          gh release create $env:TAG dist/UntrailSetup.exe (Get-Item dist/*.zip) dist/SHA256SUMS.txt `
+          gh release create $env:TAG dist/UntrailSetup.zip dist/UntrailSetup.exe (Get-Item dist/Untrail-*-portable.zip) dist/SHA256SUMS.txt `
             --title "Untrail $env:TAG" --generate-notes --verify-tag

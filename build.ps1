@@ -5,6 +5,7 @@
 # Output in dist\:
 #   Untrail.exe                    the app (runs portable too)
 #   UntrailSetup.exe               per-user installer with Untrail.exe inside
+#   UntrailSetup.zip               the installer, INSTALL.txt and LICENSE (the website's download)
 #   Untrail-<version>-portable.zip
 #   SHA256SUMS.txt
 param([string]$Version = "1.0.0", [string]$OutDir = "dist")
@@ -62,7 +63,8 @@ Write-AssemblyInfo "$obj\SetupInfo.g.cs" 'Untrail Setup'
 $setupSources = @(Get-ChildItem "$root\src\setup" -Filter *.cs | ForEach-Object { $_.FullName }) + $shared + "$obj\SetupInfo.g.cs"
 Invoke-Csc "$dist\UntrailSetup.exe" $setupSources ($art + , @("$dist\Untrail.exe", 'Untrail.payload.exe'))
 
-# 3. Portable zip + checksums
+# 3. Zips + checksums. UntrailSetup.zip keeps one name across releases, so releases/latest/download/UntrailSetup.zip always works.
+Compress-Archive -Path "$dist\UntrailSetup.exe", "$root\src\setup\INSTALL.txt", "$root\LICENSE" -DestinationPath "$dist\UntrailSetup.zip" -Force
 Compress-Archive -Path "$dist\Untrail.exe", "$root\README.md", "$root\LICENSE" -DestinationPath "$dist\Untrail-$Version-portable.zip" -Force
 Get-ChildItem $dist -File | Where-Object Name -ne 'SHA256SUMS.txt' | ForEach-Object {
     "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
