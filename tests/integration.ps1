@@ -160,6 +160,21 @@ try {
     Get-Content "$work\guard.txt" | Where-Object { $_ -match 'FAIL|PASSED' } | ForEach-Object { Write-Host "    | $_" }
     Check ($p.ExitCode -eq 0) "protected paths and registry keys are refused"
 
+    # ------------------------------------------------------------------ 0b. updates (offline)
+    Write-Host "`n== Update check: versions, release links, checksums"
+    $p = Start-Process $Exe -ArgumentList '--update-selftest', "`"$work\update.txt`"" -Wait -PassThru
+    Get-Content "$work\update.txt" | Where-Object { $_ -match 'FAIL|PASSED' } | ForEach-Object { Write-Host "    | $_" }
+    Check ($p.ExitCode -eq 0) "version comparison, release links and checksum parsing"
+    # Uninstalling Untrail must also remove its own settings key. Only where Untrail isn't installed or configured,
+    # so a developer's real installation is never touched.
+    $settings = 'HKCU:\Software\Untrail'
+    if (-not (Test-Path $settings) -and -not (Test-Path "HKCU:\$uninstRoot\Untrail") -and -not (Test-Path "$env:LOCALAPPDATA\Programs\Untrail")) {
+        New-Item $settings | Out-Null; Set-ItemProperty $settings CheckForUpdates 0 -Type DWord
+        Start-Process $Exe -ArgumentList '--uninstall-self', '--quiet' -Wait | Out-Null
+        Check (-not (Test-Path $settings)) "uninstalling Untrail removes its own settings key"
+        Remove-Item $settings -Recurse -Force -ErrorAction SilentlyContinue
+    } else { Write-Host "    | skipped the uninstall check: Untrail is installed or configured on this PC" }
+
     # ------------------------------------------------------------------ 1. admin helper refuses out-of-scope items
     Write-Host "`n== Admin helper: items that don't belong to the app"
     $decoy = Claim "$env:APPDATA\Zephyr Decoy Data"

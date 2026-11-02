@@ -25,6 +25,7 @@ You'll get a reply within 7 days. Once a fix is released, the advisory is publis
 - Bypasses of the delete-time checks: the allowlist, the app-identity check, link handling, or the scan-time path check.
 - The elevated helper: its named pipe, the parent-process verification, and which items it accepts.
 - The installer and the self-uninstall.
+- The updater: anything that makes Untrail download or run an installer that isn't the one published with this repo's release, or skip the checksum check.
 
 ## Verifying downloads
 

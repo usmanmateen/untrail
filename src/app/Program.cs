@@ -19,6 +19,8 @@ namespace Untrail
 
             if (args.Length >= 3 && args[0] == "--elevated-helper") return Deleter.RunHelper(args[1], args[2]);
             if (args.Contains("--hide-user")) { Util.HideUser = true; args = args.Where(a => a != "--hide-user").ToArray(); }
+            if (args.Contains("--no-update-check")) { Updater.Disabled = true; args = args.Where(a => a != "--no-update-check").ToArray(); }
+            if (args.Length >= 2 && args[0] == "--update-selftest") return UpdateSelfTest(args[1]);
             if (args.Length >= 3 && args[0] == "--helper-test") return HelperTest(args[1], args[2]);
             if (args.Length >= 2 && args[0] == "--scan") return CliScan(args, false);
             if (args.Length >= 2 && args[0] == "--purge") return CliScan(args, true);
@@ -185,6 +187,47 @@ namespace Untrail
                 if (why != null) bad++;
                 sb.AppendLine((why == null ? "PASS allow  " : "FAIL refused ") + it.Path + (why != null ? "  -- " + why : ""));
             }
+            sb.AppendLine(bad == 0 ? "ALL PASSED" : bad + " FAILED");
+            File.WriteAllText(outFile, sb.ToString(), Encoding.UTF8);
+            return bad == 0 ? 0 : 1;
+        }
+
+        /// <summary>
+        /// Test (offline): version comparison, reading a GitHub release, refusing download links outside this repo,
+        /// and reading SHA256SUMS.txt. Writes PASS/FAIL lines to outFile.
+        /// </summary>
+        static int UpdateSelfTest(string outFile)
+        {
+            var sb = new StringBuilder();
+            int bad = 0;
+            Action<bool, string> check = (ok, what) => { if (!ok) bad++; sb.AppendLine((ok ? "PASS " : "FAIL ") + what); };
+
+            check(Updater.IsNewer("1.1.4", "1.1.3"), "1.1.4 is newer than 1.1.3");
+            check(Updater.IsNewer("v1.10.0", "1.9.9"), "1.10.0 is newer than 1.9.9 (numeric, not text)");
+            check(!Updater.IsNewer("1.1.3", "1.1.3"), "same version is not newer");
+            check(!Updater.IsNewer("1.1.2", "1.1.3"), "older version is not newer");
+            check(!Updater.IsNewer("nightly", "1.1.3"), "a tag that isn't a version is ignored");
+
+            string repo = InstallInfo.RepoUrl;
+            string json = "{\"tag_name\":\"v9.8.7\",\"html_url\":\"" + repo + "/releases/tag/v9.8.7\",\"assets\":["
+                + "{\"name\":\"UntrailSetup.exe\",\"browser_download_url\":\"" + repo + "/releases/download/v9.8.7/UntrailSetup.exe\"},"
+                + "{\"name\":\"SHA256SUMS.txt\",\"browser_download_url\":\"" + repo + "/releases/download/v9.8.7/SHA256SUMS.txt\"}]}";
+            Updater.Release r = Updater.Parse(json);
+            check(r.Version == "9.8.7", "release version read from the tag");
+            check(r.SetupUrl != null && r.SetupUrl.EndsWith("/v9.8.7/UntrailSetup.exe"), "installer link found");
+            check(r.SumsUrl != null && r.SumsUrl.EndsWith("/v9.8.7/SHA256SUMS.txt"), "checksum file link found");
+
+            string evil = json.Replace(repo + "/releases/download/v9.8.7/UntrailSetup.exe", "https://example.com/UntrailSetup.exe")
+                              .Replace(repo + "/releases/tag/v9.8.7", "https://example.com/notes");
+            Updater.Release e = Updater.Parse(evil);
+            check(e.SetupUrl == null, "installer link outside this repo's releases is refused");
+            check(e.NotesUrl == repo + "/releases/latest", "release-notes link outside this repo is replaced");
+
+            string hash = new string('a', 64);
+            string sums = "1111111111111111111111111111111111111111111111111111111111111111  Untrail.exe\r\n" + hash + "  UntrailSetup.exe\r\n";
+            check(Updater.ExpectedHash(sums, "UntrailSetup.exe") == hash, "installer hash read from SHA256SUMS.txt (CRLF lines)");
+            check(Updater.ExpectedHash(sums, "UntrailSetup.zip") == null, "no hash for a file that isn't listed");
+
             sb.AppendLine(bad == 0 ? "ALL PASSED" : bad + " FAILED");
             File.WriteAllText(outFile, sb.ToString(), Encoding.UTF8);
             return bad == 0 ? 0 : 1;
