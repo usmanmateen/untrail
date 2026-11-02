@@ -200,7 +200,8 @@
             <p>Compare the file's SHA-256 with SHA256SUMS.txt:</p>
             <pre><code>Get-FileHash .\UntrailSetup.zip -Algorithm SHA256</code></pre>
             <p>Or confirm it was built by the project's own GitHub workflow:</p>
-            <pre><code>gh attestation verify UntrailSetup.exe -R usmanmateen/untrail</code></pre></details>
+            <pre><code>gh attestation verify UntrailSetup.exe -R usmanmateen/untrail</code></pre>
+            <p>Each release also includes that signed provenance as an <code>.intoto.jsonl</code> file, so you can check it offline with <code>--bundle</code>.</p></details>
         </div>
       </div>
     </section>

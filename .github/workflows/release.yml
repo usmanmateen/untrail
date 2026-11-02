@@ -122,6 +122,7 @@ jobs:
 
       # Lets anyone check a download came from this workflow: gh attestation verify <file> -R usmanmateen/untrail
       - name: Attest build provenance
+        id: provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
@@ -130,6 +131,15 @@ jobs:
             dist/Untrail.exe
             dist/Untrail-*-portable.zip
 
+      # The same signed provenance as a release file, so it can be checked offline:
+      # gh attestation verify <file> -R usmanmateen/untrail --bundle untrail-<tag>.intoto.jsonl
+      - name: Attach the provenance to the release files
+        shell: pwsh
+        env:
+          BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+          TAG: ${{ github.ref_name }}
+        run: Copy-Item $env:BUNDLE "dist/untrail-$env:TAG.intoto.jsonl"
+
       - name: Publish release
         shell: pwsh
         env:
@@ -137,7 +147,7 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           gh release create $env:TAG dist/UntrailSetup.zip dist/UntrailSetup.exe (Get-Item dist/Untrail-*-portable.zip) dist/SHA256SUMS.txt `
-            --title "Untrail $env:TAG" --generate-notes --verify-tag
+            "dist/untrail-$env:TAG.intoto.jsonl" --title "Untrail $env:TAG" --generate-notes --verify-tag
 
   winget:
     name: Submit to winget
