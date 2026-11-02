@@ -188,7 +188,7 @@ public static class Shot {
 }
 '@
         New-Item -ItemType Directory -Force $Screenshots | Out-Null
-        $untrail = Start-Process $Exe -ArgumentList '--hide-user', "`"$work\$name.lnk`"" -PassThru
+        $untrail = Start-Process $Exe -ArgumentList '--hide-user', '--no-update-check', "`"$work\$name.lnk`"" -PassThru
         [void]$allowed.Add($untrail.Id)   # so the finally block closes it whatever happens
         $main = TopWindow $untrail.Id 'Untrail*'
         $hwnd = [IntPtr]$main.Current.NativeWindowHandle
@@ -219,7 +219,7 @@ public static class Shot {
 
     # ------------------------------------------------------------ windows
     $stage = Start-Process "$work\DemoStage.exe" -ArgumentList $X, $Y, $W, $H, $strip, "`"$work\$name.lnk`"", "`"$frames`"", $Fps -PassThru
-    $untrail = Start-Process $Exe -ArgumentList '--hide-user' -PassThru
+    $untrail = Start-Process $Exe -ArgumentList '--hide-user', '--no-update-check' -PassThru
     [void]$allowed.Add($stage.Id); [void]$allowed.Add($untrail.Id)
     $main = TopWindow $untrail.Id 'Untrail*'
     $hwnd = [IntPtr]$main.Current.NativeWindowHandle

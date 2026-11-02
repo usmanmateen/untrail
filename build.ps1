@@ -41,7 +41,7 @@ function Invoke-Csc($out, $sources, $resources) {
     $res = $resources | ForEach-Object { "/resource:$($_[0]),$($_[1])" }
     & $csc /nologo /target:winexe /platform:anycpu /optimize+ /codepage:65001 `
         /win32manifest:"$root\src\app.manifest" /win32icon:"$root\src\assets\untrail.ico" `
-        /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:Microsoft.VisualBasic.dll `
+        /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:Microsoft.VisualBasic.dll /reference:System.Web.Extensions.dll `
         /out:$out @res @sources
     if ($LASTEXITCODE -ne 0) { throw "Build failed: $out" }
 }

@@ -167,7 +167,7 @@
         <h2 id="proof-h">Built in the open.</h2>
         <dl class="stats">
           <div><dt>86</dt><dd>integration checks on every change, running real deletes against fake apps</dd></div>
-          <div><dt>0</dt><dd>network connections. Untrail never phones home.</dd></div>
+          <div><dt>0</dt><dd>data about you or your apps sent anywhere. The only request is a daily update check.</dd></div>
           <div><dt>0</dt><dd>SDKs to install. It's built with the C# compiler that ships with Windows.</dd></div>
           <div><dt>MIT</dt><dd>licensed, with every line on GitHub</dd></div>
         </dl>
@@ -215,7 +215,9 @@
           <details><summary>Does it need admin rights?</summary>
             <p>Not to install, and usually not to clean up, because most leftovers live in your own user folder. Untrail asks only when an item is in Program Files, ProgramData or the machine-wide registry.</p></details>
           <details><summary>Does it collect any data?</summary>
-            <p>No. Untrail makes no network connections. Removal logs and registry backups stay on your PC.</p></details>
+            <p>No. Its only network request is a check, at most once a day, of GitHub's public list of Untrail releases. It sends nothing about you or your apps, and you can turn it off in Settings. Removal logs and registry backups stay on your PC.</p></details>
+          <details><summary>How do updates work?</summary>
+            <p>When a new version is out, Untrail shows a notice at the top of its window. Update now downloads the installer from the GitHub release, checks it against the SHA-256 published with that release, installs it and reopens Untrail. You can also choose Later or Skip this version. A portable copy gets a Download link instead.</p></details>
           <details><summary>How is it different from other uninstallers?</summary>
             <p>Tools like Bulk Crap Uninstaller and Revo are excellent and do much more. Untrail is deliberately narrow: one app at a time, very conservative about what it deletes, and honest about what it freed.</p></details>
           <details><summary>It missed something, or matched the wrong folder.</summary>

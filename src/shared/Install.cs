@@ -12,6 +12,8 @@ namespace Untrail
     {
         public const string RepoUrl = "https://github.com/usmanmateen/untrail";
         public const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\Untrail";
+        /// <summary>Untrail's own settings (the update check); removed when Untrail is uninstalled.</summary>
+        public const string SettingsKey = @"Software\Untrail";
 
         public static readonly string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Untrail");
         public static readonly string Exe = Path.Combine(Dir, "Untrail.exe");
@@ -96,6 +98,7 @@ namespace Untrail
             foreach (string lnk in new[] { StartMenuLink, DesktopLink })
                 try { if (File.Exists(lnk)) File.Delete(lnk); } catch { }
             try { Registry.CurrentUser.DeleteSubKeyTree(UninstallKey, false); } catch { }
+            try { Registry.CurrentUser.DeleteSubKeyTree(SettingsKey, false); } catch { }
 
             // A running exe can't delete itself: a hidden cmd waits for us to exit, then removes the folder.
             if (string.Equals(Path.GetDirectoryName(selfExe), Dir, StringComparison.OrdinalIgnoreCase))

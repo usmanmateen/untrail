@@ -66,6 +66,12 @@ It works on Windows 10 and 11 and uses the .NET Framework already built into Win
   - Browser "web apps" such as Chrome or Edge shortcuts. Untrail recognises them and explains how to remove them in the browser.
   - Built-in Windows components.
 
+## Updates
+
+When a new version is released, Untrail shows a notice at the top of its window. **Update now** downloads `UntrailSetup.exe` from the GitHub release, checks it against the SHA-256 in that release's `SHA256SUMS.txt`, installs it silently and reopens Untrail. If the checksum doesn't match, nothing is run. You can also choose **Later** or **Skip this version**. A portable copy gets a **Download** link instead.
+
+To find out about new versions, Untrail asks GitHub's public releases API for the latest release, at most once a day. That request sends nothing about you or your apps, and it's Untrail's only network use. Turn it off under **Settings → Check for updates automatically**, or run Untrail with `--no-update-check`.
+
 ## Normal scan and deep scan
 
 The **normal scan** checks the places apps actually use:

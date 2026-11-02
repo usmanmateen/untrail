@@ -11,7 +11,8 @@ namespace Untrail
     /// <summary>
     /// UntrailSetup.exe: installs the embedded Untrail.exe for the current user (no admin needed).
     ///   UntrailSetup.exe            normal install window
-    ///   UntrailSetup.exe /S         silent install (add /desktop for a desktop shortcut)
+    ///   UntrailSetup.exe /S         silent install (add /desktop for a desktop shortcut, /launch to open Untrail after;
+    ///                               Untrail's own "Update now" uses both)
     /// </summary>
     static class SetupProgram
     {
@@ -21,8 +22,11 @@ namespace Untrail
             bool silent = args.Any(a => a.Equals("/S", StringComparison.OrdinalIgnoreCase) || a == "--silent");
             if (silent)
             {
-                try { Install(args.Any(a => a.Equals("/desktop", StringComparison.OrdinalIgnoreCase))); return 0; }
+                try { Install(args.Any(a => a.Equals("/desktop", StringComparison.OrdinalIgnoreCase))); }
                 catch { return 1; }
+                if (args.Any(a => a.Equals("/launch", StringComparison.OrdinalIgnoreCase)))
+                    try { Process.Start(new ProcessStartInfo(InstallInfo.Exe) { UseShellExecute = true, WorkingDirectory = InstallInfo.Dir }); } catch { }
+                return 0;
             }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);

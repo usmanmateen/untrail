@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
@@ -165,6 +166,7 @@ namespace Untrail
             var brandBar = Place(this, new Panel { Height = S(64) }, DockStyle.Top);
             brandBar.Paint += (s, e) => Theme.PaintBrandBar(e.Graphics, brandBar.ClientRectangle, scale, true);
             brandBar.Resize += (s, e) => brandBar.Invalidate();
+            BuildUpdateBanner();
             BuildHeader();
             BuildOptions();
             var strip = new StatusStrip { SizingGrip = true, BackColor = Theme.White };
@@ -172,6 +174,7 @@ namespace Untrail
             progress = new ToolStripProgressBar { Style = ProgressBarStyle.Marquee, Visible = false, Width = S(160) };
             strip.Items.Add(status);
             strip.Items.Add(progress);
+            strip.Items.Add(BuildSettingsMenu());
             Place(this, strip, DockStyle.Bottom);
             BuildFooter();
             BuildList();
@@ -181,6 +184,127 @@ namespace Untrail
             if (Util.IsAdmin)
                 drop.Sub = "Running as administrator: Windows blocks drag & drop into admin windows. Use Browse… or Installed apps…";
             if (!string.IsNullOrEmpty(startPath)) Shown += (s, e) => LoadPath(startPath);
+            Shown += (s, e) =>
+            {
+                Updater.CleanUp();
+                Updater.CheckInBackground(r => BeginInvoke(new Action(() => ShowUpdate(r))));
+            };
+        }
+
+        // ---------------------------------------------------------------- updates
+
+        Panel updateBanner;
+        Label updateText;
+        LinkLabel lnkUpdate;
+        Updater.Release pendingUpdate;
+
+        /// <summary>A slim notice under the brand bar, shown only when a newer release exists.</summary>
+        void BuildUpdateBanner()
+        {
+            updateBanner = Place(this, new Panel { Height = S(42), BackColor = Theme.OrangeSoft, Visible = false, Padding = new Padding(S(20), 0, S(14), 0) }, DockStyle.Top);
+            updateBanner.Paint += (s, e) => { using (var pen = new Pen(Theme.OrangeLine)) e.Graphics.DrawLine(pen, 0, updateBanner.Height - 1, updateBanner.Width, updateBanner.Height - 1); };
+            var row = Place(updateBanner, new FlowLayoutPanel { WrapContents = false, BackColor = Theme.OrangeSoft }, DockStyle.Fill);
+            updateText = new Label { AutoSize = true, ForeColor = Theme.Ink, Font = Theme.Bold(9.5f), Margin = new Padding(0, S(12), S(16), 0), UseMnemonic = false };
+            lnkUpdate = MakeLink("Update now");
+            LinkLabel lnkNotes = MakeLink("What's new"), lnkLater = MakeLink("Later"), lnkSkip = MakeLink("Skip this version");
+            foreach (LinkLabel l in new[] { lnkUpdate, lnkNotes, lnkLater, lnkSkip }) l.Margin = new Padding(0, S(12), S(16), 0);
+            lnkUpdate.Font = Theme.Bold(9.5f);
+            lnkUpdate.Click += (s, e) => StartUpdate();
+            lnkNotes.Click += (s, e) => { if (pendingUpdate != null) OpenUrl(pendingUpdate.NotesUrl); };
+            lnkLater.Click += (s, e) => updateBanner.Visible = false;
+            lnkSkip.Click += (s, e) =>
+            {
+                if (pendingUpdate != null) Updater.SkippedVersion = pendingUpdate.Version;
+                updateBanner.Visible = false;
+            };
+            row.Controls.AddRange(new Control[] { updateText, lnkUpdate, lnkNotes, lnkLater, lnkSkip });
+        }
+
+        ToolStripDropDownButton BuildSettingsMenu()
+        {
+            var menu = new ToolStripDropDownButton("Settings") { ForeColor = Theme.Stone, ShowDropDownArrow = true };
+            var auto = new ToolStripMenuItem("Check for updates automatically") { CheckOnClick = true, Checked = Updater.AutoCheck };
+            auto.CheckedChanged += (s, e) => Updater.AutoCheck = auto.Checked;
+            menu.DropDownItems.Add(auto);
+            menu.DropDownItems.Add("Check for updates now", null, (s, e) => CheckNow());
+            menu.DropDownItems.Add(new ToolStripSeparator());
+            menu.DropDownItems.Add("Untrail " + BuildInfo.Version + " on GitHub", null, (s, e) => OpenUrl(InstallInfo.RepoUrl));
+            return menu;
+        }
+
+        void ShowUpdate(Updater.Release r)
+        {
+            pendingUpdate = r;
+            updateText.Text = "Untrail " + r.Version + " is available. You have " + BuildInfo.Version + ".";
+            lnkUpdate.Text = Updater.CanUpdateInPlace ? "Update now" : "Download";
+            updateBanner.Visible = true;
+        }
+
+        void CheckNow()
+        {
+            status.Text = "Checking for updates…";
+            Task.Run(() =>
+            {
+                try
+                {
+                    Updater.Release r = Updater.Fetch(15000);
+                    BeginInvoke(new Action(() =>
+                    {
+                        status.Text = "Ready";
+                        if (Updater.IsNewer(r.Version, BuildInfo.Version)) ShowUpdate(r);
+                        else MessageBox.Show(this, "You have the latest version of Untrail (" + BuildInfo.Version + ").", "Untrail", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }));
+                }
+                catch (Exception ex)
+                {
+                    BeginInvoke(new Action(() =>
+                    {
+                        status.Text = "Ready";
+                        MessageBox.Show(this, "Couldn't check for updates: " + ex.Message, "Untrail", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }));
+                }
+            });
+        }
+
+        void StartUpdate()
+        {
+            Updater.Release r = pendingUpdate;
+            if (r == null) return;
+            if (!Updater.CanUpdateInPlace) { OpenUrl(r.NotesUrl); return; }   // a portable copy: just open the download page
+            if (busy)
+            {
+                MessageBox.Show(this, "Let the current scan or clean-up finish first, then update.", "Untrail", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            busy = true;
+            lnkUpdate.Enabled = false;
+            status.Text = "Downloading Untrail " + r.Version + "…";
+            progress.Visible = true;
+            Task.Run(() =>
+            {
+                try
+                {
+                    Updater.DownloadAndInstall(r);
+                    BeginInvoke(new Action(() => { busy = false; Close(); }));   // the installer replaces this exe, then reopens Untrail
+                }
+                catch (Exception ex)
+                {
+                    BeginInvoke(new Action(() =>
+                    {
+                        busy = false;
+                        lnkUpdate.Enabled = true;
+                        progress.Visible = false;
+                        status.Text = "Ready";
+                        MessageBox.Show(this, "The update didn't install: " + ex.Message + "\n\nYou can download it from the release page instead.",
+                            "Untrail", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    }));
+                }
+            });
+        }
+
+        static void OpenUrl(string url)
+        {
+            try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
         }
 
         // ---------------------------------------------------------------- layout
