@@ -29,8 +29,14 @@ You'll get a reply within 7 days. Once a fix is released, the advisory is publis
 
 ## Verifying downloads
 
-Each release includes `SHA256SUMS.txt`, and from v1.1.2 the release files carry a signed build provenance attestation:
+Each release includes `SHA256SUMS.txt`, and from v1.1.2 the release files carry a signed build provenance attestation that proves they were built by this repository's release workflow:
 
 ```bash
 gh attestation verify UntrailSetup.exe -R usmanmateen/untrail
+```
+
+The same attestation is attached to each release as `untrail-<version>.intoto.jsonl`, so you can also check it offline:
+
+```bash
+gh attestation verify UntrailSetup.exe -R usmanmateen/untrail --bundle untrail-v1.1.4.intoto.jsonl
 ```

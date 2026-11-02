@@ -1,0 +1,3 @@
+[default.extend-words]
+# in-toto, the attestation format of the release provenance (*.intoto.jsonl)
+intoto = "intoto"
