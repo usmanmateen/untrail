@@ -11,6 +11,7 @@ namespace Untrail
     static class InstallInfo
     {
         public const string RepoUrl = "https://github.com/usmanmateen/untrail";
+        public const string PrivacyUrl = "https://usmanmateen.github.io/untrail/code-signing.html#privacy";
         public const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\Untrail";
         /// <summary>Untrail's own settings (the update check); removed when Untrail is uninstalled.</summary>
         public const string SettingsKey = @"Software\Untrail";

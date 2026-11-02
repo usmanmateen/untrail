@@ -9,25 +9,112 @@ permissions:
 
 jobs:
   release:
-    name: Build, test and publish
+    name: Build, sign, test and publish
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 120   # code signing waits for a person to approve each request in SignPath
     permissions:
       contents: write      # create the GitHub release
       id-token: write      # sign the build provenance
       attestations: write  # store the build provenance
+      actions: read        # lets SignPath fetch the artifacts it signs
+    env:
+      # Code signing switches on once the SignPath settings exist (see docs/code-signing.md); until then
+      # releases are built unsigned, with checksums and build provenance as before.
+      SIGNING: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Build
+      - name: Read the version from the tag
+        id: version
         shell: pwsh
         env:
           TAG: ${{ github.ref_name }}
         run: |
           if ($env:TAG -notmatch '^v(\d+\.\d+\.\d+)$') { throw "Release tags look like v1.2.3, not $env:TAG" }
-          ./build.ps1 -Version $Matches[1]
+          "version=$($Matches[1])" >> $env:GITHUB_OUTPUT
+
+      # 1. The app. Signed first, because the installer carries a copy of it.
+      - name: Build Untrail.exe
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: ./build.ps1 -Version $env:VERSION -Stage app
+
+      - name: Upload Untrail.exe for signing
+        id: app-unsigned
+        if: env.SIGNING == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: untrail-app-unsigned
+          path: dist/Untrail.exe
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Sign Untrail.exe (SignPath)
+        if: env.SIGNING == 'true'
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.app-unsigned.outputs.artifact-id }}
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: signed/app
+
+      - name: Use the signed Untrail.exe
+        if: env.SIGNING == 'true'
+        shell: pwsh
+        run: Copy-Item signed/app/Untrail.exe dist/Untrail.exe -Force
+
+      # 2. The installer, built around the (signed) app, then signed itself.
+      - name: Build UntrailSetup.exe
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: ./build.ps1 -Version $env:VERSION -Stage installer
+
+      - name: Upload UntrailSetup.exe for signing
+        id: setup-unsigned
+        if: env.SIGNING == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: untrail-setup-unsigned
+          path: dist/UntrailSetup.exe
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Sign UntrailSetup.exe (SignPath)
+        if: env.SIGNING == 'true'
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.setup-unsigned.outputs.artifact-id }}
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: signed/setup
+
+      - name: Use the signed UntrailSetup.exe and check both signatures
+        if: env.SIGNING == 'true'
+        shell: pwsh
+        run: |
+          Copy-Item signed/setup/UntrailSetup.exe dist/UntrailSetup.exe -Force
+          foreach ($f in 'dist/Untrail.exe', 'dist/UntrailSetup.exe') {
+            $s = Get-AuthenticodeSignature $f
+            if ($s.Status -ne 'Valid') { throw "$f isn't validly signed: $($s.Status) $($s.StatusMessage)" }
+            "$f signed by: $($s.SignerCertificate.Subject)"
+          }
+
+      # 3. Zips and checksums of the final files.
+      - name: Package
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: ./build.ps1 -Version $env:VERSION -Stage package
 
       - name: Integration tests (fake apps, real deletes, admin helper)
         shell: pwsh
@@ -51,3 +138,29 @@ jobs:
         run: |
           gh release create $env:TAG dist/UntrailSetup.zip dist/UntrailSetup.exe (Get-Item dist/Untrail-*-portable.zip) dist/SHA256SUMS.txt `
             --title "Untrail $env:TAG" --generate-notes --verify-tag
+
+  winget:
+    name: Submit to winget
+    needs: release
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      # Opens a pull request at microsoft/winget-pkgs with the new version (komac, pinned and checksum-verified).
+      # Needs the WINGET_TOKEN secret: a GitHub token with the public_repo scope (see docs/winget.md).
+      - name: Update the winget manifest
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if (-not $env:GITHUB_TOKEN) { "WINGET_TOKEN isn't set, so the winget submission is skipped."; exit 0 }
+          $komac = Join-Path $env:RUNNER_TEMP 'komac.exe'
+          Invoke-WebRequest 'https://github.com/russellbanks/Komac/releases/download/v2.17.1/komac-2.17.1-x86_64-pc-windows-msvc.exe' -OutFile $komac
+          $hash = (Get-FileHash $komac -Algorithm SHA256).Hash
+          if ($hash -ne 'A97C002C5FFA15F232AF117EFAC6774E755D27ACC47EBA00F1661033267D7438') { throw "komac.exe didn't match its pinned SHA-256 ($hash)" }
+          $version = $env:TAG.TrimStart('v')
+          & $komac update UsmanMateen.Untrail --version $version `
+            --urls "https://github.com/usmanmateen/untrail/releases/download/$env:TAG/UntrailSetup.exe" --submit
+          if ($LASTEXITCODE -ne 0) { throw "komac exited with $LASTEXITCODE" }

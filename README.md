@@ -53,10 +53,11 @@ Uninstalling an app on Windows often leaves a lot behind: caches and settings in
 
 - **[Installer](https://github.com/usmanmateen/untrail/releases/latest/download/UntrailSetup.zip):** a zip with `UntrailSetup.exe`, install notes and the licence (also available as a [single .exe](https://github.com/usmanmateen/untrail/releases/latest/download/UntrailSetup.exe)). It installs for your Windows account only (no admin rights needed) and adds Untrail to the Start menu. To remove it, use **Settings → Apps → Installed apps → Untrail**.
 - **Portable:** download `Untrail-<version>-portable.zip` from the [releases page](https://github.com/usmanmateen/untrail/releases/latest) and run `Untrail.exe`.
+- **winget:** `winget install UsmanMateen.Untrail`, once the package is accepted into the Windows Package Manager.
 
 It works on Windows 10 and 11 and uses the .NET Framework already built into Windows.
 
-> **"Windows protected your PC"?** Untrail isn't code-signed yet, so SmartScreen may warn the first time. Choose **More info → Run anyway**. Each release includes `SHA256SUMS.txt` if you want to verify the download.
+> **"Windows protected your PC"?** Untrail isn't code-signed yet, so SmartScreen may warn the first time. Choose **More info → Run anyway**. Each release includes `SHA256SUMS.txt` if you want to verify the download. Signing through the SignPath Foundation is being set up; see the [code signing policy](https://usmanmateen.github.io/untrail/code-signing.html), which also holds the privacy policy.
 
 ## What it can remove
 
@@ -173,10 +174,10 @@ powershell -ExecutionPolicy Bypass -File tests/integration.ps1 -Exe dist/Untrail
 
 ## Releasing
 
-Push a version tag. GitHub Actions builds on Windows, runs the tests, attests the build provenance, and publishes the installer, portable zip and checksums:
+Push a version tag. GitHub Actions builds on Windows, signs the app and installer (once [code signing](docs/code-signing.md) is configured), runs the tests, attests the build provenance, publishes the installer, portable zip and checksums, and opens the [winget](docs/winget.md) update:
 
 ```bash
-git tag v1.1.2 && git push origin v1.1.2
+git tag v1.2.0 && git push origin v1.2.0
 ```
 
 ## Contributing

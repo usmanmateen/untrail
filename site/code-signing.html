@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; script-src 'none'; base-uri 'self'; form-action 'none'; object-src 'none'">
+  <title>Code signing policy and privacy · Untrail</title>
+  <meta name="description" content="How Untrail's Windows releases are built and signed, who approves them, and what Untrail does and doesn't send over the network.">
+  <link rel="canonical" href="https://usmanmateen.github.io/untrail/code-signing.html">
+  <meta name="theme-color" content="#f8fafc">
+  <meta name="color-scheme" content="light">
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="preload" href="assets/fonts/SpaceGrotesk.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap nav-in">
+      <a class="brand" href="./" aria-label="Untrail home">
+        <img src="assets/img/logo-light.png" width="1057" height="284" alt="Untrail">
+      </a>
+      <nav aria-label="Primary">
+        <ul class="nav-links">
+          <li><a href="./#how">How it works</a></li>
+          <li><a href="./#faq">FAQ</a></li>
+          <li><a href="https://github.com/usmanmateen/untrail" rel="noopener">GitHub</a></li>
+        </ul>
+      </nav>
+      <a class="btn btn-primary btn-sm" href="./#download">Download</a>
+    </div>
+  </header>
+
+  <main id="main" class="doc">
+    <div class="wrap">
+      <h1>Code signing policy</h1>
+      <p class="body">This page explains how Untrail's Windows downloads are produced and signed, who can approve a release, and what Untrail does on the network.</p>
+
+      <h2>Signing</h2>
+      <p class="body">Free code signing provided by <a href="https://signpath.io">SignPath.io</a>, certificate by <a href="https://signpath.org">SignPath Foundation</a>.</p>
+      <p class="body">Untrail has applied to the SignPath Foundation program. Releases published before it's in place are unsigned; every release, signed or not, comes with SHA-256 checksums and signed build provenance from GitHub.</p>
+
+      <h2>What gets signed</h2>
+      <ul class="body list">
+        <li><code>Untrail.exe</code>, the app, and <code>UntrailSetup.exe</code>, the installer that contains it. Both are built from this repository's source by the project's own GitHub Actions release workflow, on GitHub-hosted runners.</li>
+        <li>Only commits on <code>main</code> are released. Every change reaches <code>main</code> through a pull request that has passed the build, the integration tests, CodeQL, dependency review and a workflow audit.</li>
+        <li>A release starts from a version tag, which can't be moved or deleted. Each signing request is approved by hand before anything is signed.</li>
+        <li>Untrail contains no third-party binaries. Nothing that isn't built from this repository is signed.</li>
+      </ul>
+
+      <h2>Team roles</h2>
+      <dl class="roles">
+        <div><dt>Committers and reviewers</dt><dd><a href="https://github.com/usmanmateen">Usman Mateen</a>. Changes from anyone else are reviewed by a committer before they're merged.</dd></div>
+        <div><dt>Approvers</dt><dd><a href="https://github.com/usmanmateen">Usman Mateen</a> approves each signing request.</dd></div>
+      </dl>
+      <p class="body">Everyone with access to the repository or the signing service uses multi-factor authentication.</p>
+
+      <h2 id="privacy">Privacy policy</h2>
+      <p class="body">Untrail runs entirely on your PC. It doesn't collect, store or send any information about you, your files or the apps you remove.</p>
+      <ul class="body list">
+        <li><b>Update check.</b> At most once a day, Untrail asks GitHub's public releases API (<code>api.github.com/repos/usmanmateen/untrail/releases/latest</code>) whether a newer version exists. The request contains no personal data; like any web request it reveals your IP address to GitHub, and it identifies itself as Untrail with its version number. GitHub's own <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">privacy statement</a> applies to it. Turn it off in Untrail under Settings, then Check for updates automatically, or start Untrail with <code>--no-update-check</code>.</li>
+        <li><b>Updating.</b> When you choose Update now, Untrail downloads the installer and its checksum file from the GitHub release, and installs it only if the checksum matches.</li>
+        <li><b>Removal logs and backups</b> are written to <code>Documents\Untrail Backups</code> on your PC and never leave it.</li>
+        <li><b>This website</b> uses no cookies, analytics or tracking. It's hosted on GitHub Pages, which may log visits as described in GitHub's privacy statement.</li>
+      </ul>
+      <p class="body">Untrail only changes your system when you ask it to remove an app, and it backs up registry entries before deleting them. It installs for your account only and uninstalls completely from Settings, then Apps.</p>
+
+      <h2>Reporting a problem</h2>
+      <p class="body">Security issues: please report them privately, as described in the <a href="https://github.com/usmanmateen/untrail/security/policy">security policy</a>. Anything else: <a href="https://github.com/usmanmateen/untrail/issues">open an issue</a>.</p>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot-in">
+      <img src="assets/img/logo-light.png" width="1057" height="284" alt="Untrail" class="foot-logo">
+      <nav aria-label="Footer">
+        <ul>
+          <li><a href="./">Home</a></li>
+          <li><a href="https://github.com/usmanmateen/untrail/releases">Releases</a></li>
+          <li><a href="https://github.com/usmanmateen/untrail/blob/main/LICENSE">MIT licence</a></li>
+        </ul>
+      </nav>
+      <p class="fine">Built by <a href="https://usmanmateen.com">Usman Mateen</a>. Independent open-source project. Windows is a trademark of Microsoft. No cookies or tracking.</p>
+    </div>
+  </footer>
+</body>
+</html>

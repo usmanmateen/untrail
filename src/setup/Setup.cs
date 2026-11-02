@@ -72,7 +72,7 @@ namespace Untrail
             AutoScaleMode = AutoScaleMode.None;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
-            ClientSize = new Size(S(560), S(390));
+            ClientSize = new Size(S(560), S(436));
             StartPosition = FormStartPosition.CenterScreen;
             Icon = Theme.AppIcon();
 
@@ -88,6 +88,16 @@ namespace Untrail
             };
             path = new Label { Dock = DockStyle.Top, Height = S(42), ForeColor = Theme.Stone, Text = "Installs for your account only (no admin needed) to:\n" + InstallInfo.Dir };
             chkDesktop = new CheckBox { Dock = DockStyle.Top, Height = S(32), Text = "Add a desktop shortcut", Checked = !upgrade || File.Exists(InstallInfo.DesktopLink) };
+            var privacy = new LinkLabel
+            {
+                Dock = DockStyle.Top, Height = S(44), ForeColor = Theme.Stone, LinkColor = Theme.Orange, ActiveLinkColor = Theme.OrangeLight,
+                Text = "Untrail checks GitHub for new versions once a day and sends nothing about you. You can turn this off in Settings. Privacy policy",
+            };
+            privacy.LinkArea = new LinkArea(privacy.Text.Length - "Privacy policy".Length, "Privacy policy".Length);
+            privacy.LinkClicked += (s, e) =>
+            {
+                try { Process.Start(new ProcessStartInfo(InstallInfo.PrivacyUrl) { UseShellExecute = true }); } catch { }
+            };
 
             var buttons = new Panel { Dock = DockStyle.Bottom, Height = S(46) };
             primary = new BrandButton { Primary = true, Arrow = true, Glyph = Theme.GlyphCheck, Dock = DockStyle.Right, Width = S(200), Font = Theme.Bold(11f), Text = upgrade ? "Update" : "Install" };
@@ -98,6 +108,7 @@ namespace Untrail
 
             content.Controls.Add(buttons);
             content.Controls.Add(chkDesktop);
+            content.Controls.Add(privacy);
             content.Controls.Add(path);
             content.Controls.Add(body);
             content.Controls.Add(title);
