@@ -1,0 +1,23 @@
+Untrail - Uninstall completely.
+https://usmanmateen.github.io/untrail/
+
+INSTALL
+1. Run UntrailSetup.exe.
+2. It installs Untrail for your Windows account only. No admin rights are needed.
+3. Untrail opens when it's done, and it's in the Start menu.
+
+"WINDOWS PROTECTED YOUR PC"?
+Untrail isn't code-signed yet, so SmartScreen may warn the first time.
+Choose "More info", then "Run anyway".
+
+VERIFY THE DOWNLOAD (optional)
+Compare the file's SHA-256 with SHA256SUMS.txt on the release page:
+  certutil -hashfile UntrailSetup.exe SHA256
+Or check its signed build provenance with the GitHub CLI:
+  gh attestation verify UntrailSetup.exe -R usmanmateen/untrail
+
+UNINSTALL
+Settings > Apps > Installed apps > Untrail > Uninstall.
+
+Requires Windows 10 or 11. Free and open source (MIT licence, see LICENSE).
+Source, issues and documentation: https://github.com/usmanmateen/untrail

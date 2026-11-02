@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self'; font-src 'self'; connect-src https://api.github.com; base-uri 'self'; form-action 'none'; object-src 'none'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>Untrail — Uninstall Windows apps completely, leftovers included</title>
+  <meta name="description" content="Untrail is a free, open-source Windows app that runs an app's own uninstaller, then removes the files and registry entries it leaves behind — but only the ones it can prove belong to that app.">
+  <link rel="canonical" href="https://usmanmateen.github.io/untrail/">
+  <meta name="theme-color" content="#0b0f17">
+  <meta name="color-scheme" content="light dark">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Untrail">
+  <meta property="og:title" content="Untrail — Uninstall completely.">
+  <meta property="og:description" content="Remove Windows apps and the files they leave behind. Free and open source.">
+  <meta property="og:url" content="https://usmanmateen.github.io/untrail/">
+  <meta property="og:image" content="https://usmanmateen.github.io/untrail/assets/img/og.png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:image:alt" content="Untrail logo with the tagline Uninstall completely.">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/img/icon-32.png">
+  <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+  <link rel="manifest" href="site.webmanifest">
+  <link rel="preload" href="assets/fonts/Inter.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="assets/css/site.css">
+  <script src="assets/js/site.js" defer></script>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Untrail",
+    "description": "Uninstall Windows apps completely: runs the app's own uninstaller, then removes the leftovers it can prove belong to the app.",
+    "applicationCategory": "UtilitiesApplication",
+    "operatingSystem": "Windows 10, Windows 11",
+    "url": "https://usmanmateen.github.io/untrail/",
+    "downloadUrl": "https://github.com/usmanmateen/untrail/releases/latest/download/UntrailSetup.zip",
+    "license": "https://opensource.org/licenses/MIT",
+    "isAccessibleForFree": true,
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "author": { "@type": "Person", "name": "Usman Mateen", "url": "https://github.com/usmanmateen" },
+    "codeRepository": "https://github.com/usmanmateen/untrail",
+    "image": "https://usmanmateen.github.io/untrail/assets/img/og.png"
+  }
+  </script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="nav" id="top">
+    <div class="wrap nav-in">
+      <a class="brand" href="#top" aria-label="Untrail home">
+        <img src="assets/img/logo-dark.png" width="1057" height="284" alt="Untrail">
+      </a>
+      <nav aria-label="Primary">
+        <ul class="nav-links">
+          <li><a href="#how">How it works</a></li>
+          <li><a href="#safety">Safety</a></li>
+          <li><a href="#faq">FAQ</a></li>
+          <li><a class="gh" href="https://github.com/usmanmateen/untrail" rel="noopener">
+            <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2 0 1.9 1.2 1.9 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0C17.3 4.7 18.3 5 18.3 5c.7 1.6.2 2.9.1 3.2.8.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg>
+            GitHub<span class="stars" data-stars hidden></span></a></li>
+        </ul>
+      </nav>
+      <a class="btn btn-sm" href="#download">Download</a>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- Hero -->
+    <section class="hero">
+      <div class="hero-glow" aria-hidden="true"></div>
+      <div class="wrap hero-in">
+        <p class="eyebrow">Free · Open source · Windows 10 &amp; 11</p>
+        <h1>Uninstall <span class="or">completely.</span></h1>
+        <p class="lead">Untrail runs an app's own uninstaller, then removes the files and registry entries it leaves behind — but only the ones it can prove belong to that app.</p>
+        <div class="cta">
+          <a class="btn btn-lg" href="https://github.com/usmanmateen/untrail/releases/latest/download/UntrailSetup.zip" data-dl="UntrailSetup.zip">
+            <svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg>
+            Download for Windows
+          </a>
+          <a class="btn btn-ghost btn-lg" href="https://github.com/usmanmateen/untrail" rel="noopener">View the source</a>
+        </div>
+        <p class="meta" data-release-line>Installer (.zip) · No admin rights needed · MIT licence</p>
+        <figure class="hero-shot">
+          <div class="window">
+            <video class="demo" autoplay muted loop playsinline preload="metadata" poster="assets/img/demo-poster.jpg" width="1280" height="720" aria-label="Screen recording: dragging an app's shortcut into Untrail, reviewing the leftovers it found, and cleaning them up">
+              <source src="assets/video/demo.mp4" type="video/mp4">
+            </video>
+          </div>
+          <figcaption>A real recording of Untrail removing a disposable demo app.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- Problem -->
+    <section class="band" aria-labelledby="problem-h">
+      <div class="wrap split">
+        <div>
+          <p class="kicker">The problem</p>
+          <h2 id="problem-h">"Successfully removed" usually isn't.</h2>
+          <p>Most uninstallers delete the program folder and leave everything the app created while you used it: caches and settings in AppData, update downloads, dot-folders, Start-menu shortcuts, start-up entries and registry keys. Some apps leave gigabytes.</p>
+        </div>
+        <dl class="stats">
+          <div><dt>226 MB</dt><dd>removed by the demo app's own uninstaller</dd></div>
+          <div class="hl"><dt>1.7 GB</dt><dd>it left behind, found and cleaned by Untrail</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <!-- How it works -->
+    <section id="how" class="section" aria-labelledby="how-h">
+      <div class="wrap">
+        <p class="kicker">How it works</p>
+        <h2 id="how-h">Drop. Review. Clean.</h2>
+        <ol class="steps">
+          <li><span>1</span><h3>Drop the app's icon</h3><p>Drag a desktop or Start-menu shortcut, the app's <code>.exe</code> or its folder into Untrail. Or pick it from <b>Installed apps</b>.</p></li>
+          <li><span>2</span><h3>Review what it found</h3><p>Every item shows its size, a safety rating and <em>why</em> it was found. Only items with evidence are ticked.</p></li>
+          <li><span>3</span><h3>Uninstall &amp; Clean</h3><p>The app's own uninstaller runs first. Untrail waits until it has really finished, removes what you ticked, then checks again.</p></li>
+        </ol>
+        <figure class="shot">
+          <picture>
+            <img src="assets/img/app-scan.webp" width="1136" height="839" loading="lazy" decoding="async" alt="Untrail's scan list for a demo app: each leftover with its size, a Safe to remove or Review rating, and the reason it was found">
+          </picture>
+        </figure>
+      </div>
+    </section>
+
+    <!-- Evidence -->
+    <section class="section alt" aria-labelledby="ev-h">
+      <div class="wrap">
+        <p class="kicker">The core rule</p>
+        <h2 id="ev-h">A name match is only a hint.</h2>
+        <p class="sub">A folder named after the app might belong to another app, or to you. So a folder is only ticked when there's evidence it's the app's.</p>
+        <div class="states">
+          <article class="state ok">
+            <h3><span aria-hidden="true">✓</span> Safe to remove</h3>
+            <p>Ticked for you. There's proof it belongs to the app:</p>
+            <ul>
+              <li>it holds the app's own program files</li>
+              <li>its files mention the app's install folder</li>
+              <li>the app's registry settings point to it</li>
+              <li>it's the app's Electron data folder</li>
+              <li>it sits in the publisher's own folder</li>
+            </ul>
+          </article>
+          <article class="state rv">
+            <h3><span aria-hidden="true">⚠</span> Review</h3>
+            <p>Shown with the reason, but not ticked:</p>
+            <ul>
+              <li>same name, but nothing in it links it to the app</li>
+              <li>untouched since before the app was installed</li>
+              <li>its name is a common word</li>
+              <li>it couldn't be read — a failed check is a doubt, never a pass</li>
+            </ul>
+          </article>
+          <article class="state no">
+            <h3><span aria-hidden="true">✕</span> Keep</h3>
+            <p>Never ticked. It may hold your own files:</p>
+            <ul>
+              <li>anything in Documents</li>
+              <li>anything in Saved Games</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Safety -->
+    <section id="safety" class="section" aria-labelledby="safety-h">
+      <div class="wrap">
+        <p class="kicker">Safety</p>
+        <h2 id="safety-h">When in doubt, it leaves it.</h2>
+        <p class="sub">Missing a leftover is a mild annoyance. Deleting something that isn't the app's is not acceptable. Everything below is enforced in code and tested on every change.</p>
+        <div class="grid">
+          <article class="card"><h3>Waits for the real finish</h3><p>Many uninstallers exit early and hand off to a hidden copy. Untrail follows the whole process tree and only calls it done when the app's entry and its program are both gone. Cancelled or failed? Nothing is deleted.</p></article>
+          <article class="card"><h3>Every delete is re-checked</h3><p>Right before deleting, each item is checked again against a fixed allowlist, the identity of the app being removed, and the exact path recorded at scan time.</p></article>
+          <article class="card"><h3>Links are never followed</h3><p>For junctions and symbolic links only the link is removed, never its target. A path swapped for a link after the scan is refused.</p></article>
+          <article class="card"><h3>Other apps are protected</h3><p>Folders holding another installed app are refused outright, even when they share a publisher. System and top-level folders are always off-limits.</p></article>
+          <article class="card"><h3>No backup, no delete</h3><p>Registry entries are exported to <code>Documents\Untrail Backups</code> first. If the backup fails, the entry stays. A removal log is saved alongside.</p></article>
+          <article class="card"><h3>Admin only when needed</h3><p>Admin rights are requested only for Program Files, ProgramData or machine-wide registry items, through a helper that verifies who it's talking to and repeats every check.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Results -->
+    <section class="section alt" aria-labelledby="res-h">
+      <div class="wrap split">
+        <div>
+          <p class="kicker">Honest results</p>
+          <h2 id="res-h">Measured on the drive, not estimated.</h2>
+          <p>The results show each drive separately: what the app's uninstaller removed, what Untrail deleted, what went to the Recycle Bin, what's waiting for a restart, and the measured change in free space.</p>
+          <p>Afterwards Untrail scans again. It only says <em>"No additional leftovers detected in scanned locations"</em> when that scan finished and found nothing. It never claims nothing is left.</p>
+        </div>
+        <figure class="shot small">
+          <img src="assets/img/app-results.webp" width="766" height="589" loading="lazy" decoding="async" alt="Untrail's results window: the uninstaller removed 226 MB, Untrail deleted 1.63 GB, and the free space on drive C changed by 1.86 GB">
+        </figure>
+      </div>
+    </section>
+
+    <!-- Proof -->
+    <section class="section" aria-labelledby="proof-h">
+      <div class="wrap">
+        <p class="kicker">Built in the open</p>
+        <h2 id="proof-h">Tested by deleting things. On purpose.</h2>
+        <div class="proof">
+          <div><b>86</b><span>integration checks on every change, on a clean Windows machine</span></div>
+          <div><b>0</b><span>network connections — Untrail never phones home</span></div>
+          <div><b>0</b><span>SDKs needed: built with the C# compiler that ships with Windows</span></div>
+          <div><b>MIT</b><span>licensed, with every line on GitHub</span></div>
+        </div>
+        <p class="sub">The test suite installs throwaway fake apps designed to trick it — name collisions, junctions, cancelled and partial uninstallers, locked files, failed backups — and runs real deletes against them. CodeQL, dependency review and a workflow audit run on every pull request.</p>
+      </div>
+    </section>
+
+    <!-- Download -->
+    <section id="download" class="section dl" aria-labelledby="dl-h">
+      <div class="hero-glow" aria-hidden="true"></div>
+      <div class="wrap">
+        <p class="kicker">Download</p>
+        <h2 id="dl-h">Get Untrail</h2>
+        <p class="sub" data-release-sub>The latest release, for Windows 10 and 11.</p>
+        <div class="dl-grid">
+          <article class="dl-card main">
+            <p class="tag">Recommended</p>
+            <h3>Installer</h3>
+            <p>A zip with <code>UntrailSetup.exe</code>, install notes and the licence. Installs for your account only, adds Untrail to the Start menu, and uninstalls cleanly from Settings.</p>
+            <a class="btn btn-lg" href="https://github.com/usmanmateen/untrail/releases/latest/download/UntrailSetup.zip" data-dl="UntrailSetup.zip">Download installer (.zip)</a>
+            <p class="size" data-size="UntrailSetup.zip"></p>
+          </article>
+          <article class="dl-card">
+            <h3>Installer only</h3>
+            <p>The same installer as a single <code>.exe</code>.</p>
+            <a class="btn btn-ghost" href="https://github.com/usmanmateen/untrail/releases/latest/download/UntrailSetup.exe" data-dl="UntrailSetup.exe">Download .exe</a>
+            <p class="size" data-size="UntrailSetup.exe"></p>
+          </article>
+          <article class="dl-card">
+            <h3>Portable</h3>
+            <p>No installation: unzip and run <code>Untrail.exe</code>.</p>
+            <a class="btn btn-ghost" href="https://github.com/usmanmateen/untrail/releases/latest" data-portable>Download portable (.zip)</a>
+            <p class="size" data-size-portable></p>
+          </article>
+        </div>
+
+        <div class="notes">
+          <details>
+            <summary>"Windows protected your PC"?</summary>
+            <p>Untrail isn't code-signed yet, so SmartScreen may warn the first time you run it. Choose <b>More info → Run anyway</b>. You can check the download first, as below.</p>
+          </details>
+          <details>
+            <summary>Verify your download</summary>
+            <p>Each release lists SHA-256 checksums in <a href="https://github.com/usmanmateen/untrail/releases/latest" data-sums>SHA256SUMS.txt</a>. In PowerShell:</p>
+            <pre><code>Get-FileHash .\UntrailSetup.zip -Algorithm SHA256</code></pre>
+            <p>From v1.1.2, releases also carry signed build provenance, so you can confirm a file was built by the project's own GitHub workflow:</p>
+            <pre><code>gh attestation verify UntrailSetup.exe -R usmanmateen/untrail</code></pre>
+          </details>
+        </div>
+        <p class="all"><a href="https://github.com/usmanmateen/untrail/releases">All releases and release notes →</a></p>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section id="faq" class="section" aria-labelledby="faq-h">
+      <div class="wrap narrow">
+        <p class="kicker">FAQ</p>
+        <h2 id="faq-h">Questions</h2>
+        <div class="faq">
+          <details><summary>Is it safe? It deletes things.</summary>
+            <p>That's exactly why it's careful. Only items with evidence are ticked, everything is re-checked right before it's deleted, links are never followed, registry entries are backed up first, and by default files go to the Recycle Bin. The safety rules are covered by integration tests that run real deletes against fake apps.</p></details>
+          <details><summary>Which apps does it support?</summary>
+            <p>Desktop apps installed with the usual Windows installers (MSI, NSIS, Inno Setup, Squirrel/Electron and similar), for your account or for all users; apps with no uninstaller; and Steam games through their shortcuts. Microsoft Store apps and built-in Windows components aren't supported — use Settings → Apps for those.</p></details>
+          <details><summary>Does it need admin rights?</summary>
+            <p>Not to install, and usually not to clean up: most leftovers live in your own user folder. Untrail asks for admin only when an item is in Program Files, ProgramData or the machine-wide registry. Don't start Untrail with "Run as administrator" — Windows blocks drag and drop into admin windows.</p></details>
+          <details><summary>Does it collect any data?</summary>
+            <p>No. Untrail makes no network connections at all. Removal logs and registry backups stay on your PC, in <code>Documents\Untrail Backups</code>.</p></details>
+          <details><summary>How is it different from other uninstallers?</summary>
+            <p>Tools like Bulk Crap Uninstaller and Revo are excellent and do much more. Untrail is deliberately narrow: one app at a time, and very conservative about what it deletes. It requires evidence before ticking a folder, waits for the uninstaller's whole process tree, re-checks every path at delete time, and measures the space actually freed per drive.</p></details>
+          <details><summary>It missed something, or matched the wrong folder.</summary>
+            <p>Please send a <a href="https://github.com/usmanmateen/untrail/issues/new?template=leftover_report.yml">leftover report</a>. Run <code>Untrail.exe --scan "&lt;shortcut&gt;" --hide-user --out report.txt</code> — <code>--hide-user</code> replaces your user folder with <code>%USERPROFILE%</code> — and attach the report.</p></details>
+          <details><summary>How do I uninstall Untrail?</summary>
+            <p>Settings → Apps → Installed apps → Untrail → Uninstall. It removes itself completely.</p></details>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot-in">
+      <div>
+        <img src="assets/img/logo-dark.png" width="1057" height="284" alt="Untrail" class="foot-logo">
+        <p>Uninstall completely.</p>
+      </div>
+      <nav aria-label="Footer">
+        <ul>
+          <li><a href="https://github.com/usmanmateen/untrail">Source code</a></li>
+          <li><a href="https://github.com/usmanmateen/untrail/releases">Releases</a></li>
+          <li><a href="https://github.com/usmanmateen/untrail/issues">Issues</a></li>
+          <li><a href="https://github.com/usmanmateen/untrail/blob/main/CONTRIBUTING.md">Contributing</a></li>
+          <li><a href="https://github.com/usmanmateen/untrail/security/policy">Security</a></li>
+          <li><a href="https://github.com/usmanmateen/untrail/blob/main/LICENSE">MIT licence</a></li>
+        </ul>
+      </nav>
+      <p class="fine">An independent open-source project. Windows is a trademark of Microsoft Corporation. This site uses no cookies or tracking.</p>
+    </div>
+  </footer>
+</body>
+</html>
