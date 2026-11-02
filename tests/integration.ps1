@@ -310,8 +310,14 @@ try {
     $l = New-App 'Zephyr Locked Demo' 'none'
     $lData = Claim "$env:APPDATA\Zephyr Locked Demo"; Fill $lData 'locked.bin' 256; Evidence $lData $l.Install
     $lockers.Add((Start-Process powershell.exe -WindowStyle Hidden -PassThru -ArgumentList '-NoProfile', '-Command',
-        "`$f = [IO.File]::Open('$lData\locked.bin', 'Open', 'Read', 'None'); Start-Sleep 300"))
-    Start-Sleep 2
+        "while (`$true) { try { `$f = [IO.File]::Open('$lData\locked.bin', 'Open', 'Read', 'None'); break } catch { Start-Sleep -Milliseconds 100 } }; Start-Sleep 300"))
+    # PowerShell can take several seconds to start on a busy runner: wait until the file is really locked.
+    $deadline = (Get-Date).AddSeconds(60); $locked = $false
+    while (-not $locked -and (Get-Date) -lt $deadline) {
+        try { [IO.File]::Open("$lData\locked.bin", 'Open', 'Read', 'ReadWrite').Dispose(); Start-Sleep -Milliseconds 250 }
+        catch { $locked = $true }
+    }
+    Check $locked 'test setup: the file is locked by another process'
     $code = Purge $l.Lnk "$work\locked.txt" @()
     $text = Get-Content "$work\locked.txt" -Raw
     if ($isAdmin) {
