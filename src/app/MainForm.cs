@@ -228,6 +228,7 @@ namespace Untrail
             menu.DropDownItems.Add(auto);
             menu.DropDownItems.Add("Check for updates now", null, (s, e) => CheckNow());
             menu.DropDownItems.Add(new ToolStripSeparator());
+            menu.DropDownItems.Add("Privacy policy", null, (s, e) => OpenUrl(InstallInfo.PrivacyUrl));
             menu.DropDownItems.Add("Untrail " + BuildInfo.Version + " on GitHub", null, (s, e) => OpenUrl(InstallInfo.RepoUrl));
             return menu;
         }
@@ -302,9 +303,9 @@ namespace Untrail
             });
         }
 
-        static void OpenUrl(string url)
+        void OpenUrl(string url)
         {
-            try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
+            InstallInfo.OpenUrl(this, url);
         }
 
         // ---------------------------------------------------------------- layout

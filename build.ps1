@@ -8,7 +8,17 @@
 #   UntrailSetup.zip               the installer, INSTALL.txt and LICENSE (the website's download)
 #   Untrail-<version>-portable.zip
 #   SHA256SUMS.txt
-param([string]$Version = "1.0.0", [string]$OutDir = "dist")
+#
+# -Stage runs one step at a time, so a release can sign Untrail.exe before the installer embeds it:
+#   app        clears the output folder and builds Untrail.exe
+#   installer  builds UntrailSetup.exe around the Untrail.exe already in the output folder
+#   package    makes the zips and SHA256SUMS.txt from what's in the output folder
+#   all        all three (the default)
+param(
+    [string]$Version = "1.0.0",
+    [string]$OutDir = "dist",
+    [ValidateSet('all', 'app', 'installer', 'package')] [string]$Stage = 'all'
+)
 $ErrorActionPreference = 'Stop'
 
 if ($Version -notmatch '^(\d+)\.(\d+)\.(\d+)') { throw "Version must look like 1.2.3 (got '$Version')" }
@@ -18,7 +28,6 @@ $root = $PSScriptRoot
 $obj = Join-Path $root 'obj'
 $dist = Join-Path $root $OutDir
 New-Item -ItemType Directory -Force $obj, $dist | Out-Null
-Remove-Item "$dist\*" -Force -ErrorAction SilentlyContinue
 
 $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (-not (Test-Path $csc)) { $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\csc.exe' }
@@ -54,20 +63,29 @@ $art = @(
 $shared = Get-ChildItem "$root\src\shared" -Filter *.cs | ForEach-Object { $_.FullName }
 
 # 1. The app
-Write-AssemblyInfo "$obj\AppInfo.g.cs" 'Untrail - uninstall apps completely'
-$appSources = @(Get-ChildItem "$root\src\app" -Filter *.cs | ForEach-Object { $_.FullName }) + $shared + "$obj\AppInfo.g.cs"
-Invoke-Csc "$dist\Untrail.exe" $appSources $art
+if ($Stage -in 'all', 'app') {
+    Remove-Item "$dist\*" -Force -ErrorAction SilentlyContinue
+    Write-AssemblyInfo "$obj\AppInfo.g.cs" 'Untrail - uninstall apps completely'
+    $appSources = @(Get-ChildItem "$root\src\app" -Filter *.cs | ForEach-Object { $_.FullName }) + $shared + "$obj\AppInfo.g.cs"
+    Invoke-Csc "$dist\Untrail.exe" $appSources $art
+}
 
 # 2. The installer, carrying the app inside it
-Write-AssemblyInfo "$obj\SetupInfo.g.cs" 'Untrail Setup'
-$setupSources = @(Get-ChildItem "$root\src\setup" -Filter *.cs | ForEach-Object { $_.FullName }) + $shared + "$obj\SetupInfo.g.cs"
-Invoke-Csc "$dist\UntrailSetup.exe" $setupSources ($art + , @("$dist\Untrail.exe", 'Untrail.payload.exe'))
+if ($Stage -in 'all', 'installer') {
+    if (-not (Test-Path "$dist\Untrail.exe")) { throw "No $dist\Untrail.exe to put in the installer: run -Stage app first" }
+    Write-AssemblyInfo "$obj\SetupInfo.g.cs" 'Untrail Setup'
+    $setupSources = @(Get-ChildItem "$root\src\setup" -Filter *.cs | ForEach-Object { $_.FullName }) + $shared + "$obj\SetupInfo.g.cs"
+    Invoke-Csc "$dist\UntrailSetup.exe" $setupSources ($art + , @("$dist\Untrail.exe", 'Untrail.payload.exe'))
+}
 
 # 3. Zips + checksums. UntrailSetup.zip keeps one name across releases, so releases/latest/download/UntrailSetup.zip always works.
-Compress-Archive -Path "$dist\UntrailSetup.exe", "$root\src\setup\INSTALL.txt", "$root\LICENSE" -DestinationPath "$dist\UntrailSetup.zip" -Force
-Compress-Archive -Path "$dist\Untrail.exe", "$root\README.md", "$root\LICENSE" -DestinationPath "$dist\Untrail-$Version-portable.zip" -Force
-Get-ChildItem $dist -File | Where-Object Name -ne 'SHA256SUMS.txt' | ForEach-Object {
-    "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
-} | Set-Content "$dist\SHA256SUMS.txt" -Encoding ASCII
+if ($Stage -in 'all', 'package') {
+    Remove-Item "$dist\*.zip", "$dist\SHA256SUMS.txt" -Force -ErrorAction SilentlyContinue
+    Compress-Archive -Path "$dist\UntrailSetup.exe", "$root\src\setup\INSTALL.txt", "$root\LICENSE" -DestinationPath "$dist\UntrailSetup.zip" -Force
+    Compress-Archive -Path "$dist\Untrail.exe", "$root\README.md", "$root\LICENSE" -DestinationPath "$dist\Untrail-$Version-portable.zip" -Force
+    Get-ChildItem $dist -File | Where-Object Name -ne 'SHA256SUMS.txt' | ForEach-Object {
+        "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
+    } | Set-Content "$dist\SHA256SUMS.txt" -Encoding ASCII
+}
 
 Get-ChildItem $dist | ForEach-Object { "{0,-34} {1,8:N0} KB" -f $_.Name, ($_.Length / 1KB) }

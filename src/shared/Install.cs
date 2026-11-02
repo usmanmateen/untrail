@@ -11,6 +11,7 @@ namespace Untrail
     static class InstallInfo
     {
         public const string RepoUrl = "https://github.com/usmanmateen/untrail";
+        public const string PrivacyUrl = "https://usmanmateen.github.io/untrail/code-signing.html#privacy";
         public const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\Untrail";
         /// <summary>Untrail's own settings (the update check); removed when Untrail is uninstalled.</summary>
         public const string SettingsKey = @"Software\Untrail";
@@ -21,6 +22,20 @@ namespace Untrail
         public static readonly string DesktopLink = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "Untrail.lnk");
 
         public static bool IsInstalled { get { return File.Exists(Exe); } }
+
+        /// <summary>Opens a web page in the default browser. If Windows can't, shows the address so it can be opened by hand.</summary>
+        public static void OpenUrl(System.Windows.Forms.IWin32Window owner, string url)
+        {
+            try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
+            catch (System.ComponentModel.Win32Exception ex) { ShowUrl(owner, url, ex.Message); }
+            catch (InvalidOperationException ex) { ShowUrl(owner, url, ex.Message); }
+        }
+
+        static void ShowUrl(System.Windows.Forms.IWin32Window owner, string url, string reason)
+        {
+            System.Windows.Forms.MessageBox.Show(owner, "Couldn't open your browser (" + reason + ").\n\nThe address is:\n" + url, "Untrail",
+                System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Information);
+        }
 
         public static void CreateShortcut(string lnk, string target)
         {
