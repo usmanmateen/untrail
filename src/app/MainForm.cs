@@ -303,9 +303,9 @@ namespace Untrail
             });
         }
 
-        static void OpenUrl(string url)
+        void OpenUrl(string url)
         {
-            try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
+            InstallInfo.OpenUrl(this, url);
         }
 
         // ---------------------------------------------------------------- layout

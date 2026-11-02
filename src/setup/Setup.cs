@@ -94,10 +94,7 @@ namespace Untrail
                 Text = "Untrail checks GitHub for new versions once a day and sends nothing about you. You can turn this off in Settings. Privacy policy",
             };
             privacy.LinkArea = new LinkArea(privacy.Text.Length - "Privacy policy".Length, "Privacy policy".Length);
-            privacy.LinkClicked += (s, e) =>
-            {
-                try { Process.Start(new ProcessStartInfo(InstallInfo.PrivacyUrl) { UseShellExecute = true }); } catch { }
-            };
+            privacy.LinkClicked += (s, e) => InstallInfo.OpenUrl(this, InstallInfo.PrivacyUrl);
 
             var buttons = new Panel { Dock = DockStyle.Bottom, Height = S(46) };
             primary = new BrandButton { Primary = true, Arrow = true, Glyph = Theme.GlyphCheck, Dock = DockStyle.Right, Width = S(200), Font = Theme.Bold(11f), Text = upgrade ? "Update" : "Install" };

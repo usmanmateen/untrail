@@ -23,6 +23,20 @@ namespace Untrail
 
         public static bool IsInstalled { get { return File.Exists(Exe); } }
 
+        /// <summary>Opens a web page in the default browser. If Windows can't, shows the address so it can be opened by hand.</summary>
+        public static void OpenUrl(System.Windows.Forms.IWin32Window owner, string url)
+        {
+            try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
+            catch (System.ComponentModel.Win32Exception ex) { ShowUrl(owner, url, ex.Message); }
+            catch (InvalidOperationException ex) { ShowUrl(owner, url, ex.Message); }
+        }
+
+        static void ShowUrl(System.Windows.Forms.IWin32Window owner, string url, string reason)
+        {
+            System.Windows.Forms.MessageBox.Show(owner, "Couldn't open your browser (" + reason + ").\n\nThe address is:\n" + url, "Untrail",
+                System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Information);
+        }
+
         public static void CreateShortcut(string lnk, string target)
         {
             Type t = Type.GetTypeFromProgID("WScript.Shell");
