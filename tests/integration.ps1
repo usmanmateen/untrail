@@ -268,6 +268,30 @@ try {
     Check ($text -match 'UNINSTALLER state=Partial .*entry_present=False program_present=True') 'entry gone but program still there = partial'
     Kept $pa.Exe 'program'; Kept $pData 'app data'
 
+    # ------------------------------------------------------------------ 4b. large folders: recent use can be deep inside
+    Write-Host "`n== Large folders: a recent change deep inside counts, an old tree stays for review"
+    $d = New-App 'Zephyr Deep Demo' 'none'
+    Fill "$($d.Install)\resources" 'app.asar' 128                                       # an Electron app
+    $old = (Get-Date).AddYears(-2)
+    # An Electron data folder with over 300 old entries; when it's in use, the only recent file is three levels
+    # down, after all of them in directory order.
+    function Old-Tree($root, [switch]$InUse) {
+        Text $root 'Local State' '{}'
+        foreach ($i in 0..399) { Fill $root ('f{0:D3}.dat' -f $i) 1 }
+        Fill "$root\zz-profile\a\b" 'recent.dat' 1
+        Get-ChildItem -LiteralPath $root -Recurse -File | Where-Object { -not ($InUse -and $_.Name -eq 'recent.dat') } |
+            ForEach-Object { $_.LastWriteTime = $old }
+        foreach ($p in @("$root\zz-profile\a\b", "$root\zz-profile\a", "$root\zz-profile", $root)) { (Get-Item -LiteralPath $p).LastWriteTime = $old }
+    }
+    $used = Claim "$env:APPDATA\Zephyr Deep Demo";      Old-Tree $used -InUse   # written to recently, deep inside
+    $stale = Claim "$env:LOCALAPPDATA\Zephyr Deep Demo"; Old-Tree $stale         # really untouched for two years
+    $code = Purge $d.Lnk "$work\deep.txt" @()
+    $text = Get-Content "$work\deep.txt" -Raw
+    Check ($text -match "\[Sure\s*\].*Roaming\\Zephyr Deep Demo.*Electron data folder") 'large folder used recently (deep inside) is Safe to remove'
+    Check ($text -match '\[Likely\].*Local\\Zephyr Deep Demo.*untouched since before') 'large folder untouched for years stays for review'
+    Gone $used 'large folder in use'
+    Kept "$stale\f000.dat" 'large untouched folder'
+
     # ------------------------------------------------------------------ 5. registry backup failure
     Write-Host "`n== Registry backup fails: those entries are left alone"
     $b = New-App 'Zephyr Backup Demo' 'none'
@@ -286,8 +310,14 @@ try {
     $l = New-App 'Zephyr Locked Demo' 'none'
     $lData = Claim "$env:APPDATA\Zephyr Locked Demo"; Fill $lData 'locked.bin' 256; Evidence $lData $l.Install
     $lockers.Add((Start-Process powershell.exe -WindowStyle Hidden -PassThru -ArgumentList '-NoProfile', '-Command',
-        "`$f = [IO.File]::Open('$lData\locked.bin', 'Open', 'Read', 'None'); Start-Sleep 300"))
-    Start-Sleep 2
+        "while (`$true) { try { `$f = [IO.File]::Open('$lData\locked.bin', 'Open', 'Read', 'None'); break } catch { Start-Sleep -Milliseconds 100 } }; Start-Sleep 300"))
+    # PowerShell can take several seconds to start on a busy runner: wait until the file is really locked.
+    $deadline = (Get-Date).AddSeconds(60); $locked = $false
+    while (-not $locked -and (Get-Date) -lt $deadline) {
+        try { [IO.File]::Open("$lData\locked.bin", 'Open', 'Read', 'ReadWrite').Dispose(); Start-Sleep -Milliseconds 250 }
+        catch { $locked = $true }
+    }
+    Check $locked 'test setup: the file is locked by another process'
     $code = Purge $l.Lnk "$work\locked.txt" @()
     $text = Get-Content "$work\locked.txt" -Raw
     if ($isAdmin) {

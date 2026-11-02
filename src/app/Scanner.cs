@@ -538,15 +538,45 @@ namespace Untrail
                 if (Util.IsReparse(dir)) return "It's a link to another folder — check where it points";
                 if (c.InstalledAt.HasValue)
                 {
-                    DateTime last = Directory.GetLastWriteTime(dir);
-                    foreach (FileSystemInfo f in new DirectoryInfo(dir).EnumerateFileSystemInfos().Take(300))
-                        if (f.LastWriteTime > last) last = f.LastWriteTime;
-                    if (last < c.InstalledAt.Value.AddDays(-2)) return "Same name as the app, but untouched since before it was installed";
+                    bool? used = ChangedSince(dir, c.InstalledAt.Value.AddDays(-2), UsageBudget);
+                    if (used == false) return "Same name as the app, but untouched since before it was installed";
+                    if (used == null) return "Same name as the app, but no recent changes in the first " + UsageBudget.ToString("N0") + " items checked";
                 }
                 evidence = inPublisherFolder ? "inside the publisher's folder" : Evidence(c, dir);
                 return evidence == null ? "Same name as the app, but nothing in it links it to the app" : null;
             }
             catch { evidence = null; return "Couldn't check what's inside, so it isn't selected"; }
+        }
+
+        const int UsageBudget = 5000;
+
+        /// <summary>
+        /// Whether anything in the folder was written at or after <paramref name="since"/>. A folder's own time doesn't
+        /// change when a file inside it is edited, so the whole tree is walked (links aren't followed), stopping at the
+        /// first recent entry. Returns null when <paramref name="budget"/> entries were checked without finding one.
+        /// An unreadable top folder throws; unreadable subfolders are skipped.
+        /// </summary>
+        static bool? ChangedSince(string dir, DateTime since, int budget)
+        {
+            if (Directory.GetLastWriteTime(dir) >= since) return true;
+            var pending = new Stack<string>();
+            pending.Push(dir);
+            while (pending.Count > 0)
+            {
+                string cur = pending.Pop();
+                try
+                {
+                    foreach (FileSystemInfo f in new DirectoryInfo(cur).EnumerateFileSystemInfos())
+                    {
+                        if (--budget < 0) return null;
+                        if (f.LastWriteTime >= since) return true;
+                        if ((f.Attributes & FileAttributes.Directory) != 0 && (f.Attributes & FileAttributes.ReparsePoint) == 0)
+                            pending.Push(f.FullName);
+                    }
+                }
+                catch (Exception) { if (cur == dir) throw; }
+            }
+            return false;
         }
 
         static readonly HashSet<string> TextExt = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
